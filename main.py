@@ -29,10 +29,16 @@ SYMBOLS = [
     "LDOUSDT", "PENDLEUSDT", "JUPUSDT", "PYTHUSDT", "WIFUSDT"
 ]
 
-# الفريم الزمني الجديد (ساعة واحدة)
+# الفريم الزمني
 TIMEFRAME = "1h"
 
-# قاموس لتتبع حالة التقاطع السابقة لكل عملة لمنع تكرار التنبيه
+# الحد الأقصى للصفقات المفتوحة في نفس الوقت
+MAX_OPEN_TRADES = 25
+
+# تتبع الصفقات المفتوحة حالياً (العملة -> نوع الصفقة BUY/SELL)
+active_trades = {}
+
+# قاموس لتتبع آخر إشارة لكل عملة
 last_signals = {symbol: None for symbol in SYMBOLS}
 
 # ==========================================
@@ -71,10 +77,58 @@ def get_binance_klines(symbol, interval, limit=100):
     except Exception:
         return None
 
+def check_trade_closures(symbol, df, curr_price):
+    """التحقق مما إذا تم ضرب الهدف أو وقف الخسارة لإغلاق الصفقة وتفريغ مكان"""
+    if symbol not in active_trades:
+        return
+        
+    trade_info = active_trades[symbol]
+    trade_type = trade_info['type']
+    tp = trade_info['tp']
+    sl = trade_info['sl']
+    
+    closed = False
+    result_msg = ""
+    
+    if trade_type == "BUY":
+        if curr_price >= tp:
+            closed = True
+            result_msg = f"🎯 *تم تحقيق الهدف (TP)* للعملة `{symbol}` بسعر `{curr_price:,.4f}`"
+        elif curr_price <= sl:
+            closed = True
+            result_msg = f"🛑 *تم ضرب وقف الخسارة (SL)* للعملة `{symbol}` بسعر `{curr_price:,.4f}`"
+            
+    elif trade_type == "SELL":
+        if curr_price <= tp:
+            closed = True
+            result_msg = f"🎯 *تم تحقيق الهدف (TP)* للعملة `{symbol}` بسعر `{curr_price:,.4f}`"
+        elif curr_price >= sl:
+            closed = True
+            result_msg = f"🛑 *تم ضرب وقف الخسارة (SL)* للعملة `{symbol}` بسعر `{curr_price:,.4f}`"
+            
+    if closed:
+        print(f"🔒 إغلاق الصفقة: {symbol}")
+        send_telegram_alert(result_msg)
+        # إزالة الصفقة من القائمة النشطة وتصفير إشارتها ليتمكن البوت من دخولها لاحقاً
+        del active_trades[symbol]
+        last_signals[symbol] = None
+
 def analyze_symbol(symbol):
-    """تحليل زوج واحد وفحص تقاطع الماكدي على فريم الساعة"""
+    global active_trades
+    
     df = get_binance_klines(symbol, TIMEFRAME)
     if df is None or len(df) < 30:
+        return
+
+    curr_price = df['close'].iloc[-2]
+    
+    # 1. فحص ما إذا كانت الصفقة مفتوحة مسبقاً لمتابعة إغلاقها (هدف أو وقف خسارة)
+    if symbol in active_trades:
+        check_trade_closures(symbol, df, curr_price)
+        return
+
+    # إذا وصل عدد الصفقات المفتوحة للحد الأقصى (25)، نتوقف عن فتح صفقات جديدة
+    if len(active_trades) >= MAX_OPEN_TRADES:
         return
 
     # حساب الماكدي (12, 26, 9)
@@ -88,77 +142,75 @@ def analyze_symbol(symbol):
     df['macd'] = macd_object.macd()
     df['signal'] = macd_object.macd_signal()
     
-    # فحص آخر شمعة مغلقة
     prev_macd = df['macd'].iloc[-3]
     prev_signal = df['signal'].iloc[-3]
     
     curr_macd = df['macd'].iloc[-2]
     curr_signal = df['signal'].iloc[-2]
     
-    close_price = df['close'].iloc[-2]
     recent_low = df['low'].iloc[-11:-1].min()   
     recent_high = df['high'].iloc[-11:-1].max() 
 
     signal_type = None
     
-    # 1. تقاطع شراء
     if prev_macd <= prev_signal and curr_macd > curr_signal:
         signal_type = "BUY"
-    # 2. تقاطع بيع
     elif prev_macd >= prev_signal and curr_macd < curr_signal:
         signal_type = "SELL"
 
-    # معالجة الإشارة وإرسال التنبيه
     if signal_type and last_signals.get(symbol) != signal_type:
         last_signals[symbol] = signal_type
         
         if signal_type == "BUY":
-            risk = close_price - recent_low
-            tp_price = close_price + (risk * 2)
+            risk = curr_price - recent_low
+            tp_price = curr_price + (risk * 2)
+            sl_price = recent_low
             
             msg = (
-                f"🟢 *إشارة شراء (MACD 1H)* 🟢\n\n"
+                f"🟢 *إشارة شراء جديدة (MACD 1H)* 🟢\n\n"
                 f"• *الزوج:* `{symbol}`\n"
-                f"• *الفريم:* `{TIMEFRAME}`\n"
-                f"• *سعر الإغلاق:* `${close_price:,.4f}`\n"
-                f"• *وقف الخسارة:* `${recent_low:,.4f}`\n"
-                f"• *الهدف المقترح (1:2):* `${tp_price:,.4f}`\n"
-                f"• *قيمة MACD:* `{curr_macd:.4f}`"
+                f"• *سعر الدخول:* `${curr_price:,.4f}`\n"
+                f"• *وقف الخسارة:* `${sl_price:,.4f}`\n"
+                f"• *الهدف (1:2):* `${tp_price:,.4f}`\n"
+                f"• *الصفقات النشطة حالياً:* `{len(active_trades) + 1}/{MAX_OPEN_TRADES}`"
             )
         else: # SELL
-            risk = recent_high - close_price
-            tp_price = close_price - (risk * 2)
+            risk = recent_high - curr_price
+            tp_price = curr_price - (risk * 2)
+            sl_price = recent_high
             
             msg = (
-                f"🔴 *إشارة بيع (MACD 1H)* 🔴\n\n"
+                f"🔴 *إشارة بيع جديدة (MACD 1H)* 🔴\n\n"
                 f"• *الزوج:* `{symbol}`\n"
-                f"• *الفريم:* `{TIMEFRAME}`\n"
-                f"• *سعر الإغلاق:* `${close_price:,.4f}`\n"
-                f"• *وقف الخسارة:* `${recent_high:,.4f}`\n"
-                f"• *الهدف المقترح (1:2):* `${tp_price:,.4f}`\n"
-                f"• *قيمة MACD:* `{curr_macd:.4f}`"
+                f"• *سعر الدخول:* `${curr_price:,.4f}`\n"
+                f"• *وقف الخسارة:* `${sl_price:,.4f}`\n"
+                f"• *الهدف (1:2):* `${tp_price:,.4f}`\n"
+                f"• *الصفقات النشطة حالياً:* `{len(active_trades) + 1}/{MAX_OPEN_TRADES}`"
             )
         
-        print(f"🚨 تم العثور على إشارة {signal_type} لـ {symbol}")
+        # تسجيل الصفقة كنشطة
+        active_trades[symbol] = {
+            'type': signal_type,
+            'tp': tp_price,
+            'sl': sl_price
+        }
+        
+        print(f"🚨 تم فتح صفقة {signal_type} لـ {symbol} (المجموع: {len(active_trades)})")
         send_telegram_alert(msg)
 
 # ==========================================
-# 3. تشغيل الفحص المتوازي (Multi-threading)
+# 3. تشغيل الفحص المتوازي
 # ==========================================
 def run_bot():
-    print(f"✅ تم تشغيل بوت إشارات تقاطع MACD على فريم [{TIMEFRAME}] لـ {len(SYMBOLS)} عملة...")
-    send_telegram_alert(f"🤖 *تم تشغيل بوت إشارات MACD*\nجاري مراقبة `{len(SYMBOLS)}` عملة على فريم `{TIMEFRAME}`.")
+    print(f"✅ تم تشغيل البوت بحد أقصى {MAX_OPEN_TRADES} صفقة على فريم [{TIMEFRAME}]...")
+    send_telegram_alert(f"🤖 *تم تشغيل بوت الماكدي*\n• مراقبة `{len(SYMBOLS)}` عملة\n• الحد الأقصى للصفقات النشطة: `{MAX_OPEN_TRADES}` صفقة.")
 
     while True:
-        print(f"🔄 بدء دورة فحص جديدة لـ {len(SYMBOLS)} عملة...")
-        
-        # استخدام ThreadPoolExecutor لتسريع فحص العملات بالتوازي
+        print(f"🔄 بدء دورة فحص جديدة...")
         with ThreadPoolExecutor(max_workers=10) as executor:
             executor.map(analyze_symbol, SYMBOLS)
             
-        print("✅ اكتملت دورة الفحص. الانتظار للدورة القادمة...")
-        
-        # الانتظار 3 دقائق (180 ثانية) نظراً لأن الفريم أصبح ساعة واحدة، لتحديث البيانات بانتظام مع اغلاق الشموع
+        print(f"✅ انتهت الدورة. الصفقات النشطة حالياً: {len(active_trades)}/{MAX_OPEN_TRADES}")
         time.sleep(180)
 
 if __name__ == "__main__":
