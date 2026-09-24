@@ -1,8 +1,10 @@
-from http.server import BaseHTTPRequestHandler, HTTPServer
-import os
 from concurrent.futures import ThreadPoolExecutor
+from http.server import BaseHTTPRequestHandler, HTTPServer
+import io
+import os
 import threading
 import time
+import matplotlib.pyplot as plt
 import pandas as pd
 import requests
 import ta
@@ -10,6 +12,8 @@ import ta
 # ==========================================
 # 0. سيرفر وهمي لإرضاء منصة Render وتشغيل البوت مجاناً
 # ==========================================
+
+
 class SimpleHandler(BaseHTTPRequestHandler):
 
   def do_GET(self):
@@ -24,7 +28,6 @@ def run_server():
   server.serve_forever()
 
 
-# تشغيل السيرفر في الخلفية بالتوازي مع البوت
 server_thread = threading.Thread(target=run_server)
 server_thread.daemon = True
 server_thread.start()
@@ -35,9 +38,7 @@ server_thread.start()
 TELEGRAM_BOT_TOKEN = "869642227:AAGNB88pBF_kJzEVBLzFQrBGv7yRG5f3Js4"
 TELEGRAM_CHAT_ID = "7895743860"
 
-# قائمة الـ 50 عملة (القوية والمتوسطة)
 SYMBOLS = [
-    # العملات الكبرى والقوية جداً (الصف الأول)
     "BTCUSDT",
     "ETHUSDT",
     "SOLUSDT",
@@ -48,7 +49,6 @@ SYMBOLS = [
     "DOGEUSDT",
     "DOTUSDT",
     "LINKUSDT",
-    # العملات القوية والمتوسطة ذات السيولة العالية (الصف الثاني)
     "MATICUSDT",
     "LTCUSDT",
     "NEARUSDT",
@@ -69,7 +69,6 @@ SYMBOLS = [
     "IMXUSDT",
     "FETUSDT",
     "RUNEUSDT",
-    # العملات المتوسطة والناشطة في التداول
     "ICPUSDT",
     "GRTUSDT",
     "ALGOUSDT",
@@ -91,21 +90,18 @@ SYMBOLS = [
     "WIFUSDT",
 ]
 
-# الفريم الزمني
 TIMEFRAME = "1h"
-
-# الحد الأقصى للصفقات المفتوحة في نفس الوقت
 MAX_OPEN_TRADES = 25
 
-# تتبع الصفقات المفتوحة حالياً (العملة -> نوع الصفقة BUY/SELL)
 active_trades = {}
-
-# قاموس لتتبع آخر إشارة لكل عملة
 last_signals = {symbol: None for symbol in SYMBOLS}
+
+# قائمة لتخزين الصفقات المغلقة لحساب الـ 20 صفقة وتاريخ الأداء
+closed_trades_history = []
 
 
 # ==========================================
-# 2. الدوال الأساسية للتحليل والإرسال
+# 2. الدوال الأساسية للتلجرام والتحليل
 # ==========================================
 def send_telegram_alert(message):
   url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
@@ -120,15 +116,27 @@ def send_telegram_alert(message):
     print(f"❌ خطأ في إرسال التلجرام: {e}")
 
 
+def send_telegram_photo(photo_bytes, caption=""):
+  url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
+  files = {"photo": ("performance.png", photo_bytes, "image/png")}
+  data = {
+      "chat_id": TELEGRAM_CHAT_ID,
+      "caption": caption,
+      "parse_mode": "Markdown",
+  }
+  try:
+    requests.post(url, data=data, files=files, timeout=15)
+  except Exception as e:
+    print(f"❌ خطأ في إرسال الصورة للتلجرام: {e}")
+
+
 def get_binance_klines(symbol, interval, limit=100):
   url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval={interval}&limit={limit}"
   try:
     response = requests.get(url, timeout=5)
     data = response.json()
-
     if not isinstance(data, list):
       return None
-
     df = pd.DataFrame(
         data,
         columns=[
@@ -146,7 +154,6 @@ def get_binance_klines(symbol, interval, limit=100):
             "ignore",
         ],
     )
-
     df["close"] = df["close"].astype(float)
     df["high"] = df["high"].astype(float)
     df["low"] = df["low"].astype(float)
@@ -155,8 +162,61 @@ def get_binance_klines(symbol, interval, limit=100):
     return None
 
 
+def generate_and_send_performance_report():
+  """حساب نتائج آخر 20 صفقة، نسبة النجاح، ورسم البياني وإرساله"""
+  global closed_trades_history
+
+  total = len(closed_trades_history)
+  if total == 0:
+    return
+
+  wins = sum(1 for t in closed_trades_history if t["result"] == "WIN")
+  losses = sum(1 for t in closed_trades_history if t["result"] == "LOSS")
+  win_rate = (wins / total) * 100
+
+  # حساب الأرباح تراكمياً (افتراض ربح 2R للخسارة 1R بناء على نسبة 1:2)
+  pnl_accumulative = [0]
+  curr = 0
+  for t in closed_trades_history:
+    if t["result"] == "WIN":
+      curr += 2.0
+    else:
+      curr -= 1.0
+    pnl_accumulative.append(curr)
+
+  # رسم المخطط البياني
+  plt.figure(figsize=(8, 4.5))
+  plt.plot(
+      pnl_accumulative,
+      marker="o",
+      color="#2eb85c" if curr >= 0 else "#e55353",
+      linewidth=2,
+  )
+  plt.title(f"Bot Performance Report: Last {total} Trades")
+  plt.xlabel("Trade Number")
+  plt.ylabel("Cumulative Profit (R)")
+  plt.grid(True, linestyle="--", alpha=0.6)
+
+  buf = io.BytesIO()
+  plt.savefig(buf, format="png", bbox_inches="tight")
+  buf.seek(0)
+  plt.close()
+
+  caption = (
+      f"📊 *تقرير أداء آخر {total} صفقة مغلقة*\n\n"
+      f"✅ الصفقات الرابحة: `{wins}`\n"
+      f"❌ الصفقات الخاسرة: `{losses}`\n"
+      f"🎯 نسبة النجاح (Win Rate): `{win_rate:.1f}%`\n"
+      f"💰 صافي الربح التراكمي: `{curr:+.1f}R`"
+  )
+
+  send_telegram_photo(buf.getvalue(), caption=caption)
+
+  # تفريغ القائمة لبدء حساب الـ 20 صفقة التالية
+  closed_trades_history = []
+
+
 def check_trade_closures(symbol, df, curr_price):
-  """التحقق مما إذا تم ضرب الهدف أو وقف الخسارة لإغلاق الصفقة وتفريغ مكان"""
   if symbol not in active_trades:
     return
 
@@ -166,16 +226,19 @@ def check_trade_closures(symbol, df, curr_price):
   sl = trade_info["sl"]
 
   closed = False
+  result_type = ""
   result_msg = ""
 
   if trade_type == "BUY":
     if curr_price >= tp:
       closed = True
+      result_type = "WIN"
       result_msg = (
           f"🎯 *تم تحقيق الهدف (TP)* للعملة `{symbol}` بسعر `{curr_price:,.4f}`"
       )
     elif curr_price <= sl:
       closed = True
+      result_type = "LOSS"
       result_msg = (
           f"🛑 *تم ضرب وقف الخسارة (SL)* للعملة `{symbol}` بسعر"
           f" `{curr_price:,.4f}`"
@@ -184,21 +247,31 @@ def check_trade_closures(symbol, df, curr_price):
   elif trade_type == "SELL":
     if curr_price <= tp:
       closed = True
+      result_type = "WIN"
       result_msg = (
           f"🎯 *تم تحقيق الهدف (TP)* للعملة `{symbol}` بسعر `{curr_price:,.4f}`"
       )
     elif curr_price >= sl:
       closed = True
+      result_type = "LOSS"
       result_msg = (
           f"🛑 *تم ضرب وقف الخسارة (SL)* للعملة `{symbol}` بسعر"
           f" `{curr_price:,.4f}`"
       )
 
   if closed:
-    print(f"🔒 إغلاق الصفقة: {symbol}")
+    print(f"🔒 إغلاق الصفقة: {symbol} النتيجة: {result_type}")
     send_telegram_alert(result_msg)
+
+    # حفظ الصفقة في السجل
+    closed_trades_history.append({"symbol": symbol, "result": result_type})
+
     del active_trades[symbol]
     last_signals[symbol] = None
+
+    # إذا اكتملت 20 صفقة مغلقة، أرسل التقرير فوراً
+    if len(closed_trades_history) >= 20:
+      generate_and_send_performance_report()
 
 
 def analyze_symbol(symbol):
@@ -247,7 +320,6 @@ def analyze_symbol(symbol):
       risk = curr_price - recent_low
       tp_price = curr_price + (risk * 2)
       sl_price = recent_low
-
       msg = (
           f"🟢 *إشارة شراء جديدة (MACD 1H)* 🟢\n\n"
           f"• *الزوج:* `{symbol}`\n"
@@ -256,11 +328,10 @@ def analyze_symbol(symbol):
           f"• *الهدف (1:2):* `${tp_price:,.4f}`\n"
           f"• *الصفقات النشطة حالياً:* `{len(active_trades) + 1}/{MAX_OPEN_TRADES}`"
       )
-    else:  # SELL
+    else:
       risk = recent_high - curr_price
       tp_price = curr_price - (risk * 2)
       sl_price = recent_high
-
       msg = (
           f"🔴 *إشارة بيع جديدة (MACD 1H)* 🔴\n\n"
           f"• *الزوج:* `{symbol}`\n"
@@ -271,11 +342,7 @@ def analyze_symbol(symbol):
       )
 
     active_trades[symbol] = {"type": signal_type, "tp": tp_price, "sl": sl_price}
-
-    print(
-        f"🚨 تم فتح صفقة {signal_type} لـ {symbol} (المجموع:"
-        f" {len(active_trades)})"
-    )
+    print(f"🚨 تم فتح صفقة {signal_type} لـ {symbol}")
     send_telegram_alert(msg)
 
 
@@ -285,11 +352,11 @@ def analyze_symbol(symbol):
 def run_bot():
   print(
       f"✅ تم تشغيل البوت بحد أقصى {MAX_OPEN_TRADES} صفقة على فريم"
-      f" [{TIMEFRAME}]..."
+      f" [{TIMEFRAME}] مع ميزة حساب الـ 20 صفقة..."
   )
   send_telegram_alert(
-      f"🤖 *تم تشغيل بوت الماكدي*\n• مراقبة `{len(SYMBOLS)}` عملة\n• الحد"
-      f" الأقصى للصفقات النشطة: `{MAX_OPEN_TRADES}` صفقة."
+      f"🤖 *تم تشغيل بوت الماكدي المحدث*\n• مراقبة `{len(SYMBOLS)}` عملة\n• سيتم"
+      " إرسال تقرير إحصائي ورسم بياني تلقائياً بعد كل `20 صفقة مغلقة`."
   )
 
   while True:
@@ -299,7 +366,8 @@ def run_bot():
 
     print(
         f"✅ انتهت الدورة. الصفقات النشطة حالياً:"
-        f" {len(active_trades)}/{MAX_OPEN_TRADES}"
+        f" {len(active_trades)}/{MAX_OPEN_TRADES} | صفقات السجل حتى الآن:"
+        f" {len(closed_trades_history)}/20"
     )
     time.sleep(180)
 
