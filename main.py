@@ -1,292 +1,165 @@
-import asyncio
-import io
-import os
-import threading
 import time
-from flask import Flask
-import matplotlib.pyplot as plt
-import pandas as pd
 import requests
+import pandas as pd
 import ta
+from concurrent.futures import ThreadPoolExecutor
 
-# ==================== 1. سيرفر لإبقاء Render شغالاً ====================
-app = Flask(__name__)
+# ==========================================
+# 1. إعدادات التلجرام وبينانس
+# ==========================================
+TELEGRAM_BOT_TOKEN = "869642227:AAGNB88pBF_kJzEVBLzFQrBGv7yRG5f3Js4"
+TELEGRAM_CHAT_ID = "7895743860"
 
-
-@app.route("/")
-def home():
-    return "Bot is running smoothly on Render!"
-
-
-def run_flask():
-    port = int(os.environ.get("PORT", 8080))
-    app.run(host="0.0.0.0", port=port)
-
-
-# ==================== 2. إعدادات بوت التداول ====================
-TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "8617483405:AAGhNHH1A3X1twjDUU5fwdWr6rUYKMhc9gc")
-CHAT_ID = os.environ.get("CHAT_ID", "7895743860")
-
-TIMEFRAME = "4h"
-RR_RATIO = 2.0
-BATCH_SIZE = 20  # إرسال تقرير وصورة لكل 20 صفقة مغلقة
-
+# قائمة الـ 50 عملة (القوية والمتوسطة)
 SYMBOLS = [
-    "BTCUSDT",
-    "ETHUSDT",
-    "SOLUSDT",
-    "BNBUSDT",
-    "XRPUSDT",
-    "ADAUSDT",
-    "AVAXUSDT",
-    "DOGEUSDT",
-    "DOTUSDT",
-    "LINKUSDT",
-    "MATICUSDT",
-    "LTCUSDT",
-    "NEARUSDT",
-    "APTUSDT",
-    "TRXUSDT",
+    # العملات الكبرى والقوية جداً (الصف الأول)
+    "BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT",
+    "ADAUSDT", "AVAXUSDT", "DOGEUSDT", "DOTUSDT", "LINKUSDT",
+    
+    # العملات القوية والمتوسطة ذات السيولة العالية (الصف الثاني)
+    "MATICUSDT", "LTCUSDT", "NEARUSDT", "APTUSDT", "TRXUSDT",
+    "UNIUSDT", "ATOMUSDT", "ETCUSDT", "FILUSDT", "ARBUSDT",
+    "SUIUSDT", "OPUSDT", "INJUSDT", "RENDERUSDT", "TIAUSDT",
+    "SEIUSDT", "STXUSDT", "IMXUSDT", "FETUSDT", "RUNEUSDT",
+    
+    # العملات المتوسطة والناشطة في التداول
+    "ICPUSDT", "GRTUSDT", "ALGOUSDT", "FTMUSDT",
+    "SANDUSDT", "MANAUSDT", "AXSUSDT", "GALAUSDT", "CHZUSDT",
+    "CRVUSDT", "AAVEUSDT", "SNXUSDT", "MKRUSDT", "COMPUSDT",
+    "LDOUSDT", "PENDLEUSDT", "JUPUSDT", "PYTHUSDT", "WIFUSDT"
 ]
 
+# الفريم الزمني الجديد (ساعة واحدة)
+TIMEFRAME = "1h"
 
-# ==================== 3. وظائف التلجرام ====================
-def send_telegram_message(text):
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    payload = {"chat_id": CHAT_ID, "text": text, "parse_mode": "Markdown"}
+# قاموس لتتبع حالة التقاطع السابقة لكل عملة لمنع تكرار التنبيه
+last_signals = {symbol: None for symbol in SYMBOLS}
+
+# ==========================================
+# 2. الدوال الأساسية للتحليل والإرسال
+# ==========================================
+def send_telegram_alert(message):
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    payload = {
+        "chat_id": TELEGRAM_CHAT_ID,
+        "text": message,
+        "parse_mode": "Markdown"
+    }
     try:
-        requests.post(url, json=payload, timeout=10)
+        requests.post(url, data=payload, timeout=5)
     except Exception as e:
-        print(f"خطأ في إرسال الرسالة: {e}")
+        print(f"❌ خطأ في إرسال التلجرام: {e}")
 
-
-def send_telegram_photo(photo_bytes, caption=""):
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
-    files = {"photo": ("chart.png", photo_bytes, "image/png")}
-    data = {"chat_id": CHAT_ID, "caption": caption, "parse_mode": "Markdown"}
+def get_binance_klines(symbol, interval, limit=100):
+    url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval={interval}&limit={limit}"
     try:
-        requests.post(url, data=data, files=files, timeout=15)
-    except Exception as e:
-        print(f"خطأ في إرسال الصورة: {e}")
-
-
-# ==================== 4. التحليل والاختبار ====================
-def fetch_klines(symbol, interval=TIMEFRAME, limit=500):
-    url = f"https://api.binance.com/api/v3/klines?symbol={symbol.upper()}&interval={interval}&limit={limit}"
-    try:
-        response = requests.get(url, timeout=10)
+        response = requests.get(url, timeout=5)
         data = response.json()
-        df = pd.DataFrame(
-            data,
-            columns=[
-                "timestamp",
-                "open",
-                "high",
-                "low",
-                "close",
-                "volume",
-                "close_time",
-                "qav",
-                "num_trades",
-                "taker_base",
-                "taker_quote",
-                "ignore",
-            ],
-        )
-        df["close"] = df["close"].astype(float)
-        df["high"] = df["high"].astype(float)
-        df["low"] = df["low"].astype(float)
-        df["open"] = df["open"].astype(float)
+        
+        if not isinstance(data, list):
+            return None
+            
+        df = pd.DataFrame(data, columns=[
+            'timestamp', 'open', 'high', 'low', 'close', 'volume',
+            'close_time', 'quote_av', 'trades', 'tb_base_av', 'tb_quote_av', 'ignore'
+        ])
+        
+        df['close'] = df['close'].astype(float)
+        df['high'] = df['high'].astype(float)
+        df['low'] = df['low'].astype(float)
         return df
-    except Exception as e:
-        print(f"خطأ في جلب بيانات {symbol}: {e}")
+    except Exception:
         return None
 
-
-def calculate_indicators(df):
-    df["ema200"] = ta.trend.ema_indicator(close=df["close"], window=200)
-    macd_ind = ta.trend.MACD(close=df["close"], window_slow=26, window_fast=12, window_sign=9)
-    df["macd_line"] = macd_ind.macd()
-    df["macd_signal"] = macd_ind.macd_signal()
-    return df
-
-
-def generate_and_send_batch_summary(trade_batch, batch_number):
-    if not trade_batch:
+def analyze_symbol(symbol):
+    """تحليل زوج واحد وفحص تقاطع الماكدي على فريم الساعة"""
+    df = get_binance_klines(symbol, TIMEFRAME)
+    if df is None or len(df) < 30:
         return
 
-    wins = sum(1 for t in trade_batch if t["result"] == "WIN")
-    losses = sum(1 for t in trade_batch if t["result"] == "LOSS")
-    total = len(trade_batch)
-    win_rate = (wins / total) * 100 if total > 0 else 0
-
-    pnl_accumulative = [0]
-    curr = 0
-    for t in trade_batch:
-        curr += t["pnl"]
-        pnl_accumulative.append(curr)
-
-    plt.figure(figsize=(8, 4.5))
-    plt.plot(
-        pnl_accumulative,
-        marker="o",
-        color="#2eb85c" if curr >= 0 else "#e55353",
-        linewidth=2,
+    # حساب الماكدي (12, 26, 9)
+    macd_object = ta.trend.MACD(
+        close=df['close'],
+        window_slow=26,
+        window_fast=12,
+        window_sign=9
     )
-    plt.title(f"Batch #{batch_number} Performance: {total} Trades (WinRate: {win_rate:.1f}%)")
-    plt.xlabel("Trade Number in Batch")
-    plt.ylabel("Cumulative Profit (R)")
-    plt.grid(True, linestyle="--", alpha=0.6)
+    
+    df['macd'] = macd_object.macd()
+    df['signal'] = macd_object.macd_signal()
+    
+    # فحص آخر شمعة مغلقة
+    prev_macd = df['macd'].iloc[-3]
+    prev_signal = df['signal'].iloc[-3]
+    
+    curr_macd = df['macd'].iloc[-2]
+    curr_signal = df['signal'].iloc[-2]
+    
+    close_price = df['close'].iloc[-2]
+    recent_low = df['low'].iloc[-11:-1].min()   
+    recent_high = df['high'].iloc[-11:-1].max() 
 
-    buf = io.BytesIO()
-    plt.savefig(buf, format="png", bbox_inches="tight")
-    buf.seek(0)
-    plt.close()
+    signal_type = None
+    
+    # 1. تقاطع شراء
+    if prev_macd <= prev_signal and curr_macd > curr_signal:
+        signal_type = "BUY"
+    # 2. تقاطع بيع
+    elif prev_macd >= prev_signal and curr_macd < curr_signal:
+        signal_type = "SELL"
 
-    caption = (
-        f"📊 *تقرير أداء الدفعة رقم ({batch_number})*\n"
-        f"_(لعزلة تامة لـ {total} صفقات مغلقة)_ \n\n"
-        f"• إجمالي صفقات هذه الدفعة: `{total}`\n"
-        f"• ✅ الصفقات الرابحة: `{wins}`\n"
-        f"• ❌ الصفقات الخاسرة: `{losses}`\n"
-        f"• 🎯 نسبة النجاح: `{win_rate:.1f}%`\n"
-        f"• 💰 صافي الربح: `{curr:+.1f}R`"
-    )
+    # معالجة الإشارة وإرسال التنبيه
+    if signal_type and last_signals.get(symbol) != signal_type:
+        last_signals[symbol] = signal_type
+        
+        if signal_type == "BUY":
+            risk = close_price - recent_low
+            tp_price = close_price + (risk * 2)
+            
+            msg = (
+                f"🟢 *إشارة شراء (MACD 1H)* 🟢\n\n"
+                f"• *الزوج:* `{symbol}`\n"
+                f"• *الفريم:* `{TIMEFRAME}`\n"
+                f"• *سعر الإغلاق:* `${close_price:,.4f}`\n"
+                f"• *وقف الخسارة:* `${recent_low:,.4f}`\n"
+                f"• *الهدف المقترح (1:2):* `${tp_price:,.4f}`\n"
+                f"• *قيمة MACD:* `{curr_macd:.4f}`"
+            )
+        else: # SELL
+            risk = recent_high - close_price
+            tp_price = close_price - (risk * 2)
+            
+            msg = (
+                f"🔴 *إشارة بيع (MACD 1H)* 🔴\n\n"
+                f"• *الزوج:* `{symbol}`\n"
+                f"• *الفريم:* `{TIMEFRAME}`\n"
+                f"• *سعر الإغلاق:* `${close_price:,.4f}`\n"
+                f"• *وقف الخسارة:* `${recent_high:,.4f}`\n"
+                f"• *الهدف المقترح (1:2):* `${tp_price:,.4f}`\n"
+                f"• *قيمة MACD:* `{curr_macd:.4f}`"
+            )
+        
+        print(f"🚨 تم العثور على إشارة {signal_type} لـ {symbol}")
+        send_telegram_alert(msg)
 
-    send_telegram_photo(buf.getvalue(), caption=caption)
-
-
-# ==================== 5. الحلقة الرئيسية ====================
-async def bot_loop():
-    send_telegram_message("🚀 *تم تشغيل بوت تتبع الصفقات وتقديم التقارير الدورية (كل 20 صفقة)*")
-
-    active_live_trades = []
-    current_batch_trades = []
-    batch_count = 1
+# ==========================================
+# 3. تشغيل الفحص المتوازي (Multi-threading)
+# ==========================================
+def run_bot():
+    print(f"✅ تم تشغيل بوت إشارات تقاطع MACD على فريم [{TIMEFRAME}] لـ {len(SYMBOLS)} عملة...")
+    send_telegram_alert(f"🤖 *تم تشغيل بوت إشارات MACD*\nجاري مراقبة `{len(SYMBOLS)}` عملة على فريم `{TIMEFRAME}`.")
 
     while True:
-        for sym in SYMBOLS:
-            df = fetch_klines(sym, limit=250)
-            if df is None:
-                continue
-
-            df = calculate_indicators(df)
-            row = df.iloc[-1]
-            prev_row = df.iloc[-2]
-
-            # 1. متابعة الصفقات المفتوحة للتحقق من وصولها للهدف أو الوقف
-            for trade in active_live_trades[:]:
-                if trade["symbol"] == sym:
-                    if trade["type"] == "BUY":
-                        if row["high"] >= trade["tp"]:
-                            msg = (
-                                f"🎉 *إغلاق صفقة رابحة (WIN)*\n"
-                                f"• الرمز: `{sym}` | النوع: `BUY`\n"
-                                f"• النتيجة: `✅ حققت الهدف (+2R)`"
-                            )
-                            send_telegram_message(msg)
-                            closed_trade = {**trade, "result": "WIN", "pnl": 2.0}
-                            current_batch_trades.append(closed_trade)
-                            active_live_trades.remove(trade)
-
-                        elif row["low"] <= trade["sl"]:
-                            msg = (
-                                f"🛑 *إغلاق صفقة خاسرة (LOSS)*\n"
-                                f"• الرمز: `{sym}` | النوع: `BUY`\n"
-                                f"• النتيجة: `❌ ضربت الوقف (-1R)`"
-                            )
-                            send_telegram_message(msg)
-                            closed_trade = {**trade, "result": "LOSS", "pnl": -1.0}
-                            current_batch_trades.append(closed_trade)
-                            active_live_trades.remove(trade)
-
-                    elif trade["type"] == "SELL":
-                        if row["low"] <= trade["tp"]:
-                            msg = (
-                                f"🎉 *إغلاق صفقة رابحة (WIN)*\n"
-                                f"• الرمز: `{sym}` | النوع: `SELL`\n"
-                                f"• النتيجة: `✅ حققت الهدف (+2R)`"
-                            )
-                            send_telegram_message(msg)
-                            closed_trade = {**trade, "result": "WIN", "pnl": 2.0}
-                            current_batch_trades.append(closed_trade)
-                            active_live_trades.remove(trade)
-
-                        elif row["high"] >= trade["sl"]:
-                            msg = (
-                                f"🛑 *إغلاق صفقة خاسرة (LOSS)*\n"
-                                f"• الرمز: `{sym}` | النوع: `SELL`\n"
-                                f"• النتيجة: `❌ ضربت الوقف (-1R)`"
-                            )
-                            send_telegram_message(msg)
-                            closed_trade = {**trade, "result": "LOSS", "pnl": -1.0}
-                            current_batch_trades.append(closed_trade)
-                            active_live_trades.remove(trade)
-
-                    # فحص هل اكتملت الدفعة الحالية (20 صفقة)؟
-                    if len(current_batch_trades) >= BATCH_SIZE:
-                        send_telegram_message(f"📈 *اكتملت الدفعة رقم ({batch_count}) بـ 20 صفقة مغلقة. جاري إعداد التقرير...*")
-                        generate_and_send_batch_summary(current_batch_trades, batch_count)
-                        # تصفير القائمة لبدء دفعة جديدة كلياً (بدون تكرار)
-                        current_batch_trades = []
-                        batch_count += 1
-
-            # 2. البحث عن صفقات جديدة بشرط عدم وجود صفقة مفتوحة على نفس العملة
-            is_already_open = any(t["symbol"] == sym for t in active_live_trades)
-
-            if not is_already_open:
-                buy_signal = (
-                    (row["close"] > row["ema200"])
-                    and (prev_row["macd_line"] < prev_row["macd_signal"])
-                    and (row["macd_line"] > row["macd_signal"])
-                    and (row["macd_line"] < 0)
-                )
-
-                sell_signal = (
-                    (row["close"] < row["ema200"])
-                    and (prev_row["macd_line"] > prev_row["macd_signal"])
-                    and (row["macd_line"] < row["macd_signal"])
-                    and (row["macd_line"] > 0)
-                )
-
-                if buy_signal or sell_signal:
-                    trade_type = "BUY" if buy_signal else "SELL"
-                    entry = row["close"]
-
-                    if buy_signal:
-                        sl = row["low"]
-                        risk = entry - sl if (entry - sl) > 0 else entry * 0.01
-                        tp = entry + (risk * RR_RATIO)
-                    else:
-                        sl = row["high"]
-                        risk = sl - entry if (sl - entry) > 0 else entry * 0.01
-                        tp = entry - (risk * RR_RATIO)
-
-                    new_trade = {
-                        "symbol": sym,
-                        "type": trade_type,
-                        "entry": entry,
-                        "sl": sl,
-                        "tp": tp,
-                    }
-                    active_live_trades.append(new_trade)
-
-                    icon = "🟢" if trade_type == "BUY" else "🔴"
-                    send_telegram_message(
-                        f"🚨 *إشارة تداول جديدة ({trade_type} {icon})*\n"
-                        f"• الرمز: `{sym}` | الدخول: `{entry:.4f}`\n"
-                        f"• الوقف: `{sl:.4f}` | الهدف: `{tp:.4f}`\n"
-                        f"📊 الحالية في الدفعة: `{len(current_batch_trades)}/{BATCH_SIZE}`"
-                    )
-
-        await asyncio.sleep(600)  # الفحص كل 10 دقائق
-
-
-def start_bot_thread():
-    asyncio.run(bot_loop())
-
+        print(f"🔄 بدء دورة فحص جديدة لـ {len(SYMBOLS)} عملة...")
+        
+        # استخدام ThreadPoolExecutor لتسريع فحص العملات بالتوازي
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            executor.map(analyze_symbol, SYMBOLS)
+            
+        print("✅ اكتملت دورة الفحص. الانتظار للدورة القادمة...")
+        
+        # الانتظار 3 دقائق (180 ثانية) نظراً لأن الفريم أصبح ساعة واحدة، لتحديث البيانات بانتظام مع اغلاق الشموع
+        time.sleep(180)
 
 if __name__ == "__main__":
-    t = threading.Thread(target=start_bot_thread)
-    t.start()
-    run_flask()
+    run_bot()
