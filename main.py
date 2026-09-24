@@ -6,8 +6,8 @@ import time
 from flask import Flask
 import matplotlib.pyplot as plt
 import pandas as pd
-import pandas_ta as ta
 import requests
+import ta
 
 # ==================== 1. سيرفر لإبقاء Render شغالاً ====================
 app = Flask(__name__)
@@ -24,8 +24,8 @@ def run_flask():
 
 
 # ==================== 2. إعدادات بوت التداول ====================
-TELEGRAM_TOKEN = "8617483405:AAGhNHH1A3X1twjDUU5fwdWr6rUYKMhc9gc"
-CHAT_ID = "7895743860"
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "8617483405:AAGhNHH1A3X1twjDUU5fwdWr6rUYKMhc9gc")
+CHAT_ID = os.environ.get("CHAT_ID", "7895743860")
 
 TIMEFRAME = "4h"
 RR_RATIO = 2.0
@@ -75,7 +75,7 @@ def send_telegram_photo(photo_bytes, caption=""):
 
 # ==================== 4. التحليل والاختبار ====================
 def fetch_klines(symbol, interval=TIMEFRAME, limit=500):
-    url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval={interval}&limit={limit}"
+    url = f"https://api.binance.com/api/v3/klines?symbol={symbol.upper()}&interval={interval}&limit={limit}"
     try:
         response = requests.get(url, timeout=10)
         data = response.json()
@@ -107,11 +107,14 @@ def fetch_klines(symbol, interval=TIMEFRAME, limit=500):
 
 
 def calculate_indicators(df):
-    df["ema200"] = ta.ema(df["close"], length=200)
-    macd = ta.macd(df["close"], fast=12, slow=26, signal=9)
-    if macd is not None:
-        df["macd_line"] = macd["MACD_12_26_9"]
-        df["macd_signal"] = macd["MACDs_12_26_9"]
+    # حساب EMA 200 باستخدام مكتبة ta
+    df["ema200"] = ta.trend.ema_indicator(close=df["close"], window=200)
+    
+    # حساب MACD باستخدام مكتبة ta
+    macd_ind = ta.trend.MACD(close=df["close"], window_slow=26, window_fast=12, window_sign=9)
+    df["macd_line"] = macd_ind.macd()
+    df["macd_signal"] = macd_ind.macd_signal()
+    
     return df
 
 
