@@ -3,3 +3,5 @@ requests
 pandas
 ta
 websocket-client
+matplotlib
+mplfinance
