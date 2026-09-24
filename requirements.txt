@@ -1,5 +1,2 @@
-flask
 requests
-pandas
-ta
-matplotlib
+websocket-client
