@@ -16,16 +16,16 @@ import ta
 
 class SimpleHandler(BaseHTTPRequestHandler):
 
-  def do_GET(self):
-    self.send_response(200)
-    self.end_headers()
-    self.wfile.write(b"Trading Bot is running successfully!")
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Trading Bot is running successfully!")
 
 
 def run_server():
-  port = int(os.environ.get("PORT", 10000))
-  server = HTTPServer(("0.0.0.0", port), SimpleHandler)
-  server.serve_forever()
+    port = int(os.environ.get("PORT", 10000))
+    server = HTTPServer(("0.0.0.0", port), SimpleHandler)
+    server.serve_forever()
 
 
 server_thread = threading.Thread(target=run_server)
@@ -103,274 +103,284 @@ closed_trades_history = []
 # ==========================================
 # 2. الدوال الأساسية للتلجرام والتحليل
 # ==========================================
+def verify_user(chat_id):
+    """دالة أمان للتحقق من أن المُرسل هو أنت حصراً"""
+    if str(chat_id) != str(TELEGRAM_CHAT_ID):
+        return False
+    return True
+
+
 def send_telegram_alert(message):
-  url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-  payload = {
-      "chat_id": TELEGRAM_CHAT_ID,
-      "text": message,
-      "parse_mode": "Markdown",
-  }
-  try:
-    requests.post(url, data=payload, timeout=5)
-  except Exception as e:
-    print(f"❌ خطأ في إرسال التلجرام: {e}")
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    payload = {
+        "chat_id": TELEGRAM_CHAT_ID,
+        "text": message,
+        "parse_mode": "Markdown",
+    }
+    try:
+        requests.post(url, data=payload, timeout=5)
+    except Exception as e:
+        print(f"❌ خطأ في إرسال التلجرام: {e}")
 
 
 def send_telegram_photo(photo_bytes, caption=""):
-  url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
-  files = {"photo": ("performance.png", photo_bytes, "image/png")}
-  data = {
-      "chat_id": TELEGRAM_CHAT_ID,
-      "caption": caption,
-      "parse_mode": "Markdown",
-  }
-  try:
-    requests.post(url, data=data, files=files, timeout=15)
-  except Exception as e:
-    print(f"❌ خطأ في إرسال الصورة للتلجرام: {e}")
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
+    files = {"photo": ("performance.png", photo_bytes, "image/png")}
+    data = {
+        "chat_id": TELEGRAM_CHAT_ID,
+        "caption": caption,
+        "parse_mode": "Markdown",
+    }
+    try:
+        requests.post(url, data=data, files=files, timeout=15)
+    except Exception as e:
+        print(f"❌ خطأ في إرسال الصورة للتلجرام: {e}")
 
 
 def get_binance_klines(symbol, interval, limit=100):
-  url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval={interval}&limit={limit}"
-  try:
-    response = requests.get(url, timeout=5)
-    data = response.json()
-    if not isinstance(data, list):
-      return None
-    df = pd.DataFrame(
-        data,
-        columns=[
-            "timestamp",
-            "open",
-            "high",
-            "low",
-            "close",
-            "volume",
-            "close_time",
-            "quote_av",
-            "trades",
-            "tb_base_av",
-            "tb_quote_av",
-            "ignore",
-        ],
-    )
-    df["close"] = df["close"].astype(float)
-    df["high"] = df["high"].astype(float)
-    df["low"] = df["low"].astype(float)
-    return df
-  except Exception:
-    return None
+    url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval={interval}&limit={limit}"
+    try:
+        response = requests.get(url, timeout=5)
+        data = response.json()
+        if not isinstance(data, list):
+            return None
+        df = pd.DataFrame(
+            data,
+            columns=[
+                "timestamp",
+                "open",
+                "high",
+                "low",
+                "close",
+                "volume",
+                "close_time",
+                "quote_av",
+                "trades",
+                "tb_base_av",
+                "tb_quote_av",
+                "ignore",
+            ],
+        )
+        df["close"] = df["close"].astype(float)
+        df["high"] = df["high"].astype(float)
+        df["low"] = df["low"].astype(float)
+        return df
+    except Exception:
+        return None
 
 
 def generate_and_send_performance_report():
-  """حساب نتائج آخر 20 صفقة، نسبة النجاح، ورسم البياني وإرساله"""
-  global closed_trades_history
+    """حساب نتائج آخر 20 صفقة، نسبة النجاح، ورسم البياني وإرساله"""
+    global closed_trades_history
 
-  total = len(closed_trades_history)
-  if total == 0:
-    return
+    total = len(closed_trades_history)
+    if total == 0:
+        return
 
-  wins = sum(1 for t in closed_trades_history if t["result"] == "WIN")
-  losses = sum(1 for t in closed_trades_history if t["result"] == "LOSS")
-  win_rate = (wins / total) * 100
+    wins = sum(1 for t in closed_trades_history if t["result"] == "WIN")
+    losses = sum(1 for t in closed_trades_history if t["result"] == "LOSS")
+    win_rate = (wins / total) * 100
 
-  # حساب الأرباح تراكمياً (افتراض ربح 2R للخسارة 1R بناء على نسبة 1:2)
-  pnl_accumulative = [0]
-  curr = 0
-  for t in closed_trades_history:
-    if t["result"] == "WIN":
-      curr += 2.0
-    else:
-      curr -= 1.0
-    pnl_accumulative.append(curr)
+    # حساب الأرباح تراكمياً (افتراض ربح 2R للخسارة 1R بناء على نسبة 1:2)
+    pnl_accumulative = [0]
+    curr = 0
+    for t in closed_trades_history:
+        if t["result"] == "WIN":
+            curr += 2.0
+        else:
+            curr -= 1.0
+        pnl_accumulative.append(curr)
 
-  # رسم المخطط البياني
-  plt.figure(figsize=(8, 4.5))
-  plt.plot(
-      pnl_accumulative,
-      marker="o",
-      color="#2eb85c" if curr >= 0 else "#e55353",
-      linewidth=2,
-  )
-  plt.title(f"Bot Performance Report: Last {total} Trades")
-  plt.xlabel("Trade Number")
-  plt.ylabel("Cumulative Profit (R)")
-  plt.grid(True, linestyle="--", alpha=0.6)
+    # رسم المخطط البياني
+    plt.figure(figsize=(8, 4.5))
+    plt.plot(
+        pnl_accumulative,
+        marker="o",
+        color="#2eb85c" if curr >= 0 else "#e55353",
+        linewidth=2,
+    )
+    plt.title(f"Bot Performance Report: Last {total} Trades")
+    plt.xlabel("Trade Number")
+    plt.ylabel("Cumulative Profit (R)")
+    plt.grid(True, linestyle="--", alpha=0.6)
 
-  buf = io.BytesIO()
-  plt.savefig(buf, format="png", bbox_inches="tight")
-  buf.seek(0)
-  plt.close()
+    buf = io.BytesIO()
+    plt.savefig(buf, format="png", bbox_inches="tight")
+    buf.seek(0)
+    plt.close()
 
-  caption = (
-      f"📊 *تقرير أداء آخر {total} صفقة مغلقة*\n\n"
-      f"✅ الصفقات الرابحة: `{wins}`\n"
-      f"❌ الصفقات الخاسرة: `{losses}`\n"
-      f"🎯 نسبة النجاح (Win Rate): `{win_rate:.1f}%`\n"
-      f"💰 صافي الربح التراكمي: `{curr:+.1f}R`"
-  )
+    caption = (
+        f"📊 *تقرير أداء آخر {total} صفقة مغلقة*\n\n"
+        f"✅ الصفقات الرابحة: `{wins}`\n"
+        f"❌ الصفقات الخاسرة: `{losses}`\n"
+        f"🎯 نسبة النجاح (Win Rate): `{win_rate:.1f}%`\n"
+        f"💰 صافي الربح التراكمي: `{curr:+.1f}R`"
+    )
 
-  send_telegram_photo(buf.getvalue(), caption=caption)
+    send_telegram_photo(buf.getvalue(), caption=caption)
 
-  # تفريغ القائمة لبدء حساب الـ 20 صفقة التالية
-  closed_trades_history = []
+    # تفريغ القائمة لبدء حساب الـ 20 صفقة التالية
+    closed_trades_history = []
 
 
 def check_trade_closures(symbol, df, curr_price):
-  if symbol not in active_trades:
-    return
+    if symbol not in active_trades:
+        return
 
-  trade_info = active_trades[symbol]
-  trade_type = trade_info["type"]
-  tp = trade_info["tp"]
-  sl = trade_info["sl"]
+    trade_info = active_trades[symbol]
+    trade_type = trade_info["type"]
+    tp = trade_info["tp"]
+    sl = trade_info["sl"]
 
-  closed = False
-  result_type = ""
-  result_msg = ""
+    closed = False
+    result_type = ""
+    result_msg = ""
 
-  if trade_type == "BUY":
-    if curr_price >= tp:
-      closed = True
-      result_type = "WIN"
-      result_msg = (
-          f"🎯 *تم تحقيق الهدف (TP)* للعملة `{symbol}` بسعر `{curr_price:,.4f}`"
-      )
-    elif curr_price <= sl:
-      closed = True
-      result_type = "LOSS"
-      result_msg = (
-          f"🛑 *تم ضرب وقف الخسارة (SL)* للعملة `{symbol}` بسعر"
-          f" `{curr_price:,.4f}`"
-      )
+    if trade_type == "BUY":
+        if curr_price >= tp:
+            closed = True
+            result_type = "WIN"
+            result_msg = (
+                f"🎯 *تم تحقيق الهدف (TP)* للعملة `{symbol}` بسعر `{curr_price:,.4f}`"
+            )
+        elif curr_price <= sl:
+            closed = True
+            result_type = "LOSS"
+            result_msg = (
+                f"🛑 *تم ضرب وقف الخسارة (SL)* للعملة `{symbol}` بسعر"
+                f" `{curr_price:,.4f}`"
+            )
 
-  elif trade_type == "SELL":
-    if curr_price <= tp:
-      closed = True
-      result_type = "WIN"
-      result_msg = (
-          f"🎯 *تم تحقيق الهدف (TP)* للعملة `{symbol}` بسعر `{curr_price:,.4f}`"
-      )
-    elif curr_price >= sl:
-      closed = True
-      result_type = "LOSS"
-      result_msg = (
-          f"🛑 *تم ضرب وقف الخسارة (SL)* للعملة `{symbol}` بسعر"
-          f" `{curr_price:,.4f}`"
-      )
+    elif trade_type == "SELL":
+        if curr_price <= tp:
+            closed = True
+            result_type = "WIN"
+            result_msg = (
+                f"🎯 *تم تحقيق الهدف (TP)* للعملة `{symbol}` بسعر `{curr_price:,.4f}`"
+            )
+        elif curr_price >= sl:
+            closed = True
+            result_type = "LOSS"
+            result_msg = (
+                f"🛑 *تم ضرب وقف الخسارة (SL)* للعملة `{symbol}` بسعر"
+                f" `{curr_price:,.4f}`"
+            )
 
-  if closed:
-    print(f"🔒 إغلاق الصفقة: {symbol} النتيجة: {result_type}")
-    send_telegram_alert(result_msg)
+    if closed:
+        print(f"🔒 إغلاق الصفقة: {symbol} النتيجة: {result_type}")
+        send_telegram_alert(result_msg)
 
-    # حفظ الصفقة في السجل
-    closed_trades_history.append({"symbol": symbol, "result": result_type})
+        # حفظ الصفقة في السجل
+        closed_trades_history.append({"symbol": symbol, "result": result_type})
 
-    del active_trades[symbol]
-    last_signals[symbol] = None
+        del active_trades[symbol]
+        last_signals[symbol] = None
 
-    # إذا اكتملت 20 صفقة مغلقة، أرسل التقرير فوراً
-    if len(closed_trades_history) >= 20:
-      generate_and_send_performance_report()
+        # إذا اكتملت 20 صفقة مغلقة، أرسل التقرير فوراً
+        if len(closed_trades_history) >= 20:
+            generate_and_send_performance_report()
 
 
 def analyze_symbol(symbol):
-  global active_trades
+    global active_trades
 
-  df = get_binance_klines(symbol, TIMEFRAME)
-  if df is None or len(df) < 30:
-    return
+    df = get_binance_klines(symbol, TIMEFRAME)
+    if df is None or len(df) < 30:
+        return
 
-  curr_price = df["close"].iloc[-2]
+    curr_price = df["close"].iloc[-2]
 
-  if symbol in active_trades:
-    check_trade_closures(symbol, df, curr_price)
-    return
+    if symbol in active_trades:
+        check_trade_closures(symbol, df, curr_price)
+        return
 
-  if len(active_trades) >= MAX_OPEN_TRADES:
-    return
+    if len(active_trades) >= MAX_OPEN_TRADES:
+        return
 
-  macd_object = ta.trend.MACD(
-      close=df["close"], window_slow=26, window_fast=12, window_sign=9
-  )
+    macd_object = ta.trend.MACD(
+        close=df["close"], window_slow=26, window_fast=12, window_sign=9
+    )
 
-  df["macd"] = macd_object.macd()
-  df["signal"] = macd_object.macd_signal()
+    df["macd"] = macd_object.macd()
+    df["signal"] = macd_object.macd_signal()
 
-  prev_macd = df["macd"].iloc[-3]
-  prev_signal = df["signal"].iloc[-3]
+    prev_macd = df["macd"].iloc[-3]
+    prev_signal = df["signal"].iloc[-3]
 
-  curr_macd = df["macd"].iloc[-2]
-  curr_signal = df["signal"].iloc[-2]
+    curr_macd = df["macd"].iloc[-2]
+    curr_signal = df["signal"].iloc[-2]
 
-  recent_low = df["low"].iloc[-11:-1].min()
-  recent_high = df["high"].iloc[-11:-1].max()
+    recent_low = df["low"].iloc[-11:-1].min()
+    recent_high = df["high"].iloc[-11:-1].max()
 
-  signal_type = None
+    signal_type = None
 
-  if prev_macd <= prev_signal and curr_macd > curr_signal:
-    signal_type = "BUY"
-  elif prev_macd >= prev_signal and curr_macd < curr_signal:
-    signal_type = "SELL"
+    if prev_macd <= prev_signal and curr_macd > curr_signal:
+        signal_type = "BUY"
+    elif prev_macd >= prev_signal and curr_macd < curr_signal:
+        signal_type = "SELL"
 
-  if signal_type and last_signals.get(symbol) != signal_type:
-    last_signals[symbol] = signal_type
+    if signal_type and last_signals.get(symbol) != signal_type:
+        last_signals[symbol] = signal_type
 
-    if signal_type == "BUY":
-      risk = curr_price - recent_low
-      tp_price = curr_price + (risk * 2)
-      sl_price = recent_low
-      msg = (
-          f"🟢 *إشارة شراء جديدة (MACD 1H)* 🟢\n\n"
-          f"• *الزوج:* `{symbol}`\n"
-          f"• *سعر الدخول:* `${curr_price:,.4f}`\n"
-          f"• *وقف الخسارة:* `${sl_price:,.4f}`\n"
-          f"• *الهدف (1:2):* `${tp_price:,.4f}`\n"
-          f"• *الصفقات النشطة حالياً:* `{len(active_trades) + 1}/{MAX_OPEN_TRADES}`"
-      )
-    else:
-      risk = recent_high - curr_price
-      tp_price = curr_price - (risk * 2)
-      sl_price = recent_high
-      msg = (
-          f"🔴 *إشارة بيع جديدة (MACD 1H)* 🔴\n\n"
-          f"• *الزوج:* `{symbol}`\n"
-          f"• *سعر الدخول:* `${curr_price:,.4f}`\n"
-          f"• *وقف الخسارة:* `${sl_price:,.4f}`\n"
-          f"• *الهدف (1:2):* `${tp_price:,.4f}`\n"
-          f"• *الصفقات النشطة حالياً:* `{len(active_trades) + 1}/{MAX_OPEN_TRADES}`"
-      )
+        if signal_type == "BUY":
+            risk = curr_price - recent_low
+            tp_price = curr_price + (risk * 2)
+            sl_price = recent_low
+            msg = (
+                f"🟢 *إشارة شراء جديدة (MACD 1H)* 🟢\n\n"
+                f"• *الزوج:* `{symbol}`\n"
+                f"• *سعر الدخول:* `${curr_price:,.4f}`\n"
+                f"• *وقف الخسارة:* `${sl_price:,.4f}`\n"
+                f"• *الهدف (1:2):* `${tp_price:,.4f}`\n"
+                f"• *الصفقات النشطة حالياً:* `{len(active_trades) + 1}/{MAX_OPEN_TRADES}`"
+            )
+        else:
+            risk = recent_high - curr_price
+            tp_price = curr_price - (risk * 2)
+            sl_price = recent_high
+            msg = (
+                f"🔴 *إشارة بيع جديدة (MACD 1H)* 🔴\n\n"
+                f"• *الزوج:* `{symbol}`\n"
+                f"• *سعر الدخول:* `${curr_price:,.4f}`\n"
+                f"• *وقف الخسارة:* `${sl_price:,.4f}`\n"
+                f"• *الهدف (1:2):* `${tp_price:,.4f}`\n"
+                f"• *الصفقات النشطة حالياً:* `{len(active_trades) + 1}/{MAX_OPEN_TRADES}`"
+            )
 
-    active_trades[symbol] = {"type": signal_type, "tp": tp_price, "sl": sl_price}
-    print(f"🚨 تم فتح صفقة {signal_type} لـ {symbol}")
-    send_telegram_alert(msg)
+        active_trades[symbol] = {
+            "type": signal_type,
+            "tp": tp_price,
+            "sl": sl_price,
+        }
+        print(f"🚨 تم فتح صفقة {signal_type} لـ {symbol}")
+        send_telegram_alert(msg)
 
 
 # ==========================================
 # 3. تشغيل الفحص المتوازي
 # ==========================================
 def run_bot():
-  print(
-      f"✅ تم تشغيل البوت بحد أقصى {MAX_OPEN_TRADES} صفقة على فريم"
-      f" [{TIMEFRAME}] مع ميزة حساب الـ 20 صفقة..."
-  )
-  send_telegram_alert(
-      f"🤖 *تم تشغيل بوت الماكدي المحدث*\n• مراقبة `{len(SYMBOLS)}` عملة\n• سيتم"
-      " إرسال تقرير إحصائي ورسم بياني تلقائياً بعد كل `20 صفقة مغلقة`."
-  )
-
-  while True:
-    print(f"🔄 بدء دورة فحص جديدة...")
-    with ThreadPoolExecutor(max_workers=10) as executor:
-      executor.map(analyze_symbol, SYMBOLS)
-
     print(
-        f"✅ انتهت الدورة. الصفقات النشطة حالياً:"
-        f" {len(active_trades)}/{MAX_OPEN_TRADES} | صفقات السجل حتى الآن:"
-        f" {len(closed_trades_history)}/20"
+        f"✅ تم تشغيل البوت بحد أقصى {MAX_OPEN_TRADES} صفقة على فريم"
+        f" [{TIMEFRAME}] مع حماية أمان وحساب الـ 20 صفقة..."
     )
-    time.sleep(180)
+    send_telegram_alert(
+        f"🤖 *تم تشغيل بوت الماكدي المحدث*\n• مراقبة `{len(SYMBOLS)}` عملة\n• وضع الأمان والحماية مفعّل 🔒"
+    )
+
+    while True:
+        print(f"🔄 بدء دورة فحص جديدة...")
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            executor.map(analyze_symbol, SYMBOLS)
+
+        print(
+            f"✅ انتهت الدورة. الصفقات النشطة حالياً:"
+            f" {len(active_trades)}/{MAX_OPEN_TRADES} | صفقات السجل حتى الآن:"
+            f" {len(closed_trades_history)}/20"
+        )
+        time.sleep(180)
 
 
 if __name__ == "__main__":
-  run_bot()
+    run_bot()
