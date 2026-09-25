@@ -12,44 +12,50 @@ import requests
 import ta
 
 # ==========================================
-# 1. إعدادات التلجرام وبينانس
+# 1. إعدادات التلجرام وقائمة الـ 200 زوج (من الأقوى إلى المتوسطة)
 # ==========================================
 TELEGRAM_BOT_TOKEN = "8617483405:AAGhNHH1A3X1twjDUU5fwdWr6rUYKMhc9gc"
 TELEGRAM_CHAT_ID = "7895743860"
 
-def fetch_all_usdt_symbols():
-    """جلب جميع أزواج العملات المرتبطة بـ USDT من بينانس تلقائياً مع وجود قائمة احتياطية ضخمة"""
-    fallback_symbols = [
-        "BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "ADAUSDT", "AVAXUSDT", 
-        "DOGEUSDT", "DOTUSDT", "MATICUSDT", "LINKUSDT", "UNIUSDT", "ATOMUSDT", "LTCUSDT",
-        "ETCUSDT", "NEARUSDT", "APTUSDT", "SUIUSDT", "ARBUSDT", "OPUSDT", "INJUSDT",
-        "RENDERUSDT", "FETUSDT", "AGIXUSDT", "OCEANUSDT", "RNDRUSDT", "TIAUSDT", "SEIUSDT"
-    ]
-    url = "https://api.binance.com/api/v3/exchangeInfo"
-    try:
-        response = requests.get(url, timeout=10)
-        data = response.json()
-        symbols = []
-        for s in data.get('symbols', []):
-            if s['status'] == 'TRADING' and s['quoteAsset'] == 'USDT':
-                symbol_name = s['symbol']
-                if not any(stable in symbol_name for stable in ['USDCUSDT', 'FDUSDUSDT', 'TUSDUSDT', 'USDPUSDT']):
-                    symbols.append(symbol_name)
-        if len(symbols) > 0:
-            print(f"✅ تم بنجاح جلب {len(symbols)} زوجاً للتداول من بينانس تلقائياً.")
-            return symbols
-        else:
-            print("⚠️ القائمة المسترجعة فارغة، سيتم استخدام القائمة الاحتياطية.")
-            return fallback_symbols
-    except Exception as e:
-        print(f"❌ خطأ في جلب الأزواج تلقائياً، سيتم استخدام القائمة الاحتياطية: {e}")
-        return fallback_symbols
-
-# جلب جميع العملات المتاحة ديناميكياً
-SYMBOLS = fetch_all_usdt_symbols()
+SYMBOLS = [
+    # الكبرى والرئيسية
+    "BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "ADAUSDT", "AVAXUSDT", 
+    "DOGEUSDT", "DOTUSDT", "MATICUSDT", "LINKUSDT", "UNIUSDT", "ATOMUSDT", "LTCUSDT",
+    "ETCUSDT", "NEARUSDT", "APTUSDT", "SUIUSDT", "ARBUSDT", "OPUSDT", "INJUSDT",
+    "RENDERUSDT", "FETUSDT", "AGIXUSDT", "OCEANUSDT", "TIAUSDT", "SEIUSDT", "SHIBUSDT",
+    "PEPEUSDT", "FLOKIUSDT", "ICPUSDT", "FILUSDT", "STXUSDT", "IMXUSDT", "RUNEUSDT",
+    "GRTUSDT", "ALGOUSDT", "FTMUSDT", "SANDUSDT", "MANAUSDT", "AXSUSDT", "GALAUSDT",
+    "CHZUSDT", "CRVUSDT", "AAVEUSDT", "SNXUSDT", "MKRUSDT", "COMPUSDT", "LDOUSDT",
+    "PENDLEUSDT", "JUPUSDT", "PYTHUSDT", "WIFUSDT", "BONKUSDT", "JASMYUSDT", "ORDIUSDT",
+    # عملات الطبقة الثانية والذكاء الاصطناعي والألعاب
+    "SATSUSDT", "RSRUSDT", "ACEUSDT", "PORTALUSDT", "PIXELUSDT", "STRKUSDT", "MANTAUSDT",
+    "ALTUSDT", "XAIUSDT", "AIUSDT", "NFPUSDT", "ZETAUSDT", "DYMUSDT", "AXLUSDT",
+    "OMUSDT", "BBUSDT", "REZUSDT", "IOUSDT", "ZKUSDT", "LISTAUSDT", "BANANAUSDT",
+    "TONUSDT", "NOTUSDT", "DOGSUSDT", "CATIUSDT", "HMSTRUSDT", "EIGENUSDT", "NEIROUSDT",
+    "TURBOUSDT", "1000SATSUSDT", "1000RATSUSDT", "POLYXUSDT", "CFXUSDT", "KASUSDT",
+    "ARUSDT", "ROSEUSDT", "PHBUSDT", "IDUSDT", "SXPUSDT", "CHRUSDT", "HBARUSDT",
+    "ENJUSDT", "BATUSDT", "ZRXUSDT", "KNCUSDT", "IOSTUSDT", "ONTUSDT", "ZILUSDT",
+    "VETUSDT", "THETAUSDT", "XTZUSDT", "EOSUSDT", "BCHUSDT", "XLMUSDT", "DASHUSDT",
+    "ZECUSDT", "KSMUSDT", "STORJUSDT", "LRCUSDT", "ANKRUSDT", "SCUSDT", "ZENUSDT",
+    "RVNUSDT", "COTIUSDT", "BLZUSDT", "HIFIUSDT", "CYBERUSDT", "ARKMUSDT", "MEMEUSDT",
+    # عملات إضافية لتغطية نطاق واسع ومتوسط (أكثر من 200 زوج)
+    "VANRYUSDT", "AEVOUSDT", "ETHFIUSDT", "SAGAUSDT", "TNSRUSDT", "MERLUSDT", "ZROUSDT",
+    "AVAILUSDT", "SYNUSDT", "LQTYUSDT", "COMBOUSDT", "IQUSDT", "DGBUSDT", "GMXUSDT",
+    "GNSUSDT", "ILVUSDT", "POLUSDT", "BOMEUSDT", "SANTOSUSDT", "LazioUSDT", "PORTOUSDT",
+    "ALPINEUSDT", "PSGUSDT", "BARUSDT", "CITYUSDT", "INTERUSDT", "ACMUSDT", "ASRUSDT",
+    "ATMUSDT", "OGUSDT", "GALUSDT", "HQUSDT", "HIGHUSDT", "HOOKUSDT", "IDEXUSDT",
+    "MAGICUSDT", "VOXELUSDT", "GHSTUSDT", "UNIUSDT", "SPELLUSDT", "KP3RUSDT", "BIFIUSDT",
+    "FARMUSDT", "MDTUSDT", "STPTUSDT", "RADUSDT", "POLSUSDT", "ALPHAUSDT", "BAKEUSDT",
+    "BURGERUSDT", "C98USDT", "DEXEUSDT", "DFUSDT", "DKAUSDT", "FORUSDT", "FRONTUSDT",
+    "GTCUSDT", "HARDUSDT", "KEEPUSDT", "LITUSDT", "MOVRUSDT", "NULSUSDT", "OXTUSDT",
+    "PERPUSDT", "PONDUSDT", "QIUSDT", "QTUMUSDT", "RAYUSDT", "REEFUSDT", "RFUELUSDT",
+    "RLCUSDT", "SCRTUSDT", "SUNUSDT", "SUPERUSDT", "TKOUSDT", "TLMUSDT", "TRUUSDT",
+    "UNFIUSDT", "VIDTUSDT", "WNXMUSDT", "XEMUSDT", "YFIUSDT", "YFIIUSDT", "PROMUSDT",
+    "BLURUSDT", "ACEUSDT", "PORTALUSDT", "PIXELUSDT", "MAVUSDT", "PENDLEUSDT", "SUIUSDT"
+]
 
 TIMEFRAME = "1h"
-MAX_OPEN_TRADES = 40  
+MAX_OPEN_TRADES = 50  
 
 active_trades = {}
 last_signals = {symbol: None for symbol in SYMBOLS}
@@ -63,8 +69,7 @@ def send_telegram_alert(message):
         "parse_mode": "Markdown"
     }
     try:
-        response = requests.post(url, data=payload, timeout=10)
-        print(f"Telegram response: {response.text}")
+        requests.post(url, data=payload, timeout=10)
     except Exception as e:
         print(f"❌ خطأ في إرسال التلجرام: {e}")
 
@@ -73,8 +78,7 @@ def send_telegram_photo(photo_bytes, caption):
     files = {'photo': ('performance.png', photo_bytes, 'image/png')}
     data = {'chat_id': TELEGRAM_CHAT_ID, 'caption': caption, 'parse_mode': 'Markdown'}
     try:
-        response = requests.post(url, data=data, files=files, timeout=15)
-        print(f"Telegram photo response: {response.text}")
+        requests.post(url, data=data, files=files, timeout=15)
     except Exception as e:
         print(f"❌ خطأ في إرسال الصورة للتلجرام: {e}")
 
@@ -213,11 +217,12 @@ def analyze_symbol(symbol):
         active_trades[symbol] = {"type": signal_type, "tp": tp, "sl": sl}
 
 def run_bot():
-    print(f"🚀 بدأ تشغيل البوت في الخلفية لمراقبة جميع أزواج بينانس ({len(SYMBOLS)} زوجاً)...")
-    send_telegram_alert(f"🤖 *تم تشغيل بوت التداول بنجاح لمراقبة جميع عملات وأزواج بينانس ({len(SYMBOLS)} زوجاً)* باستخدام المتوسط 200 والماكدي!")
+    print(f"🚀 بدأ تشغيل البوت في الخلفية لمراقبة العملات ({len(SYMBOLS)} زوجاً)...")
+    send_telegram_alert(f"🤖 *تم تشغيل بوت التداول بنجاح لمراقبة ({len(SYMBOLS)} زوجاً)* من عملات بينانس الكبرى والمتوسطة!")
     while True:
         check_and_close_trades()
-        with ThreadPoolExecutor(max_workers=20) as executor:
+        # استخدام معالجة متوازية واسعة النطاق لفحص 200 عملة بسرعة وسلاسة
+        with ThreadPoolExecutor(max_workers=25) as executor:
             executor.map(analyze_symbol, SYMBOLS)
         time.sleep(180)
 
