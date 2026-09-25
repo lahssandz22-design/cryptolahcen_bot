@@ -34,7 +34,7 @@ server_thread.daemon = True
 server_thread.start()
 
 # ==========================================
-# 1. إعدادات التلجرام لبوت lahscenxd_bot وبينانس
+# 1. إعدادات التلجرام وبينانس
 # ==========================================
 TELEGRAM_BOT_TOKEN = "8617483405:AAGhNHH1a3X1twjDUU5fwdwr6rUYKMhc9gc"
 TELEGRAM_CHAT_ID = "7895743860"
@@ -242,6 +242,9 @@ def analyze_symbol(symbol):
     curr_macd = df["macd"].iloc[-2]
     curr_signal = df["signal"].iloc[-2]
 
+    recent_low = df['low'].iloc[-11:-1].min()
+    recent_high = df['high'].iloc[-11:-1].max()
+
     signal_type = None
     if prev_macd <= prev_signal and curr_macd > curr_signal:
         signal_type = "BUY"
@@ -252,7 +255,6 @@ def analyze_symbol(symbol):
         last_signals[symbol] = signal_type
 
         if signal_type == "BUY":
-            recent_low = df['low'].iloc[-11:-1].min()
             risk = curr_price - recent_low
             tp_price = curr_price + (risk * 2)
             sl_price = recent_low
@@ -265,7 +267,6 @@ def analyze_symbol(symbol):
                 f"• *الصفقات النشطة حالياً:* `{len(active_trades) + 1}/{MAX_OPEN_TRADES}`"
             )
         else:
-            recent_high = df['high'].iloc[-11:-1].max()
             risk = recent_high - curr_price
             tp_price = curr_price - (risk * 2)
             sl_price = recent_high
@@ -287,11 +288,11 @@ def analyze_symbol(symbol):
         send_telegram_alert(msg)
 
 # ==========================================
-# 3. تشغيل الفحص المتوازي وخيط البوت
+# 3. تشغيل الفحص المتوازي
 # ==========================================
 def run_bot():
-    print(f"✅ تم تشغيل البوت @lahscenxd_bot بحد أقصى {MAX_OPEN_TRADES} صفقة على فريم [{TIMEFRAME}] لمراقبة {len(SYMBOLS)} عملة...")
-    send_telegram_alert(f"🤖 *تم تشغيل بوت الماكدي بنجاح (@lahscenxd_bot)*\n• مراقبة `{len(SYMBOLS)}` عملة رقمية 🚀\n• وضع الحماية مفعّل 🔒")
+    print(f"✅ تم تشغيل البوت بحد أقصى {MAX_OPEN_TRADES} صفقة على فريم [{TIMEFRAME}] لمراقبة {len(SYMBOLS)} عملة...")
+    send_telegram_alert(f"🤖 *تم تشغيل بوت التداول بنجاح!*\n• مراقبة `{len(SYMBOLS)}` عملة رقمية 🚀\n• وضع الحماية مفعّل 🔒")
 
     while True:
         print(f"🔄 بدء دورة فحص جديدة لـ {len(SYMBOLS)} عملة...")
@@ -306,7 +307,7 @@ if __name__ == "__main__":
     bot_thread.daemon = True
     bot_thread.start()
 
+    # ابقِ السيرفر الرئيسي يعمل للاستجابة لـ Render
     port = int(os.environ.get("PORT", 10000))
     server = HTTPServer(("0.0.0.0", port), SimpleHandler)
-    print(f"🌐 السيرفر يعمل على المنفذ {port}")
     server.serve_forever()
