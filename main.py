@@ -17,32 +17,38 @@ import ta
 TELEGRAM_BOT_TOKEN = "8617483405:AAGhNHH1A3X1twjDUU5fwdWr6rUYKMhc9gc"
 TELEGRAM_CHAT_ID = "7895743860"
 
-def fetch_top_usdt_symbols():
-    """جلب أهم وأبرز أزواج USDT النشطة من بينانس لتفادي الضغط أو الحظر"""
-    url = "https://api.binance.com/api/v3/exchangeInfo"
-    try:
-        response = requests.get(url, timeout=10)
-        data = response.json()
-        symbols = []
-        for s in data.get('symbols', []):
-            if s['status'] == 'TRADING' and s['quoteAsset'] == 'USDT':
-                symbol_name = s['symbol']
-                if not any(stable in symbol_name for stable in ['USDC', 'FDUSD', 'TUSD', 'USDP', 'BUSD']):
-                    symbols.append(symbol_name)
-        symbols = symbols[:50]
-        print(f"✅ تم بنجاح جلب {len(symbols)} زوجاً للتداول من بينانس.")
-        return symbols
-    except Exception as e:
-        print(f"❌ خطأ في جلب الأزواج تلقائياً، استخدام القائمة الافتراضية: {e}")
-        return ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "ADAUSDT", "DOGEUSDT", "AVAXUSDT"]
+# قائمة أبرز 100 زوج USDT
+SYMBOLS = [
+    "BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT",
+    "ADAUSDT", "AVAXUSDT", "DOGEUSDT", "DOTUSDT", "LINKUSDT",
+    "NEARUSDT", "MATICUSDT", "LTCUSDT", "UNIUSDT", "FILUSDT",
+    "ATOMUSDT", "ETCUSDT", "XLMUSDT", "BCHUSDT", "APTUSDT",
+    "SUIUSDT", "ARBUSDT", "OPUSDT", "INJUSDT", "RNDRUSDT",
+    "TIAUSDT", "SEIUSDT", "FETUSDT", "AGIXUSDT", "RENDERUSDT",
+    "PEPEUSDT", "SHIBUSDT", "FLOKIUSDT", "BONKUSDT", "WIFUSDT",
+    "ARUSDT", "IMXUSDT", "SANDUSDT", "MANAUSDT", "AXSUSDT",
+    "GALAUSDT", "CHZUSDT", "CRVUSDT", "AAVEUSDT", "MKRUSDT",
+    "SNXUSDT", "COMPUSDT", "LDOUSDT", "RUNEUSDT", "KASUSDT",
+    "PYTHUSDT", "JUPUSDT", "STRKUSDT", "PORTALUSDT", "MAVUSDT",
+    "PENDLEUSDT", "ACEUSDT", "NFPUSDT", "XAIUSDT", "AIUSDT",
+    "BBUSDT", "REZUSDT", "IOUSDT", "ZKUSDT", "BANANAUSDT",
+    "RENDERUSDT", "TONUSDT", "HMSTRUSDT", "CATIUSDT", "DOGSUSDT",
+    "NEIROUSDT", "TURBOUSDT", "1000SATSUSDT", "1000RATSUSDT", "ORDIUSDT",
+    "BOMEUSDT", "MEWUSDT", "SLERFUSDT", "POLUSDT", "EGLDUSDT",
+    "ALGOUSDT", "HBARUSDT", "FTMUSDT", "FLOWUSDT", "THETAUSDT",
+    "XTZUSDT", "EOSUSDT", "KAVAUSDT", "CHRUSDT", "GMXUSDT",
+    "STXUSDT", "CFXUSDT", "LQTYUSDT", "SSVUSDT", "OCEANUSDT",
+    "JASMYUSDT", "HOTUSDT", "ENJUSDT", "BATUSDT", "ZILUSDT"
+]
 
-SYMBOLS = fetch_top_usdt_symbols()
-TIMEFRAME = "1h"
-MAX_OPEN_TRADES = 20
+# الفريمات المطلوبة (يمكنك تعديلها مثل "15m", "1h", "4h")
+TIMEFRAMES = ["15m", "1h"]
+MAX_OPEN_TRADES_PER_TF = 20
 
-active_trades = {}
-last_signals = {symbol: None for symbol in SYMBOLS}
-closed_trades_history = []
+# تخزين الصفقات وإلتفاف الإشارات لكل فريم على حدة
+active_trades = {tf: {} for tf in TIMEFRAMES}
+last_signals = {tf: {symbol: None for symbol in SYMBOLS} for tf in TIMEFRAMES}
+closed_trades_history = {tf: [] for tf in TIMEFRAMES}
 
 def send_telegram_alert(message):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
@@ -52,8 +58,7 @@ def send_telegram_alert(message):
         "parse_mode": "Markdown"
     }
     try:
-        response = requests.post(url, data=payload, timeout=10)
-        print(f"Telegram response: {response.text}")
+        requests.post(url, data=payload, timeout=10)
     except Exception as e:
         print(f"❌ خطأ في إرسال التلجرام: {e}")
 
@@ -62,8 +67,7 @@ def send_telegram_photo(photo_bytes, caption):
     files = {'photo': ('performance.png', photo_bytes, 'image/png')}
     data = {'chat_id': TELEGRAM_CHAT_ID, 'caption': caption, 'parse_mode': 'Markdown'}
     try:
-        response = requests.post(url, data=data, files=files, timeout=15)
-        print(f"Telegram photo response: {response.text}")
+        requests.post(url, data=data, files=files, timeout=15)
     except Exception as e:
         print(f"❌ خطأ في إرسال الصورة للتلجرام: {e}")
 
@@ -85,7 +89,7 @@ def get_binance_klines(symbol, interval, limit=250):
     except Exception:
         return None
 
-def generate_performance_chart(trades_batch):
+def generate_performance_chart(trades_batch, timeframe):
     wins = sum(1 for t in trades_batch if t['result'] == 'WIN')
     losses = sum(1 for t in trades_batch if t['result'] == 'LOSS')
     win_rate = (wins / len(trades_batch)) * 100 if len(trades_batch) > 0 else 0
@@ -96,7 +100,7 @@ def generate_performance_chart(trades_batch):
     colors = ['#2ecc71', '#e74c3c']
 
     ax.bar(categories, counts, color=colors)
-    ax.set_title(f"نتائج آخر {len(trades_batch)} صفقة (نسبة النجاح: {win_rate:.1f}%)", fontsize=12, fontweight='bold')
+    ax.set_title(f"فريم ({timeframe}) - آخر {len(trades_batch)} صفقة (النجاح: {win_rate:.1f}%)", fontsize=11, fontweight='bold')
     ax.set_ylabel('عدد الصفقات')
 
     for i, v in enumerate(counts):
@@ -109,63 +113,63 @@ def generate_performance_chart(trades_batch):
     plt.close(fig)
     return buf.getvalue()
 
-def check_and_close_trades():
+def check_and_close_trades(timeframe):
     global active_trades, closed_trades_history
-    for symbol in list(active_trades.keys()):
-        df = get_binance_klines(symbol, TIMEFRAME, limit=10)
+    tf_trades = active_trades[timeframe]
+    for symbol in list(tf_trades.keys()):
+        df = get_binance_klines(symbol, timeframe, limit=10)
         if df is None:
             continue
         curr_price = df['close'].iloc[-1]
-        trade = active_trades[symbol]
+        trade = tf_trades[symbol]
         
         if trade['type'] == 'BUY':
             if curr_price >= trade['tp']:
                 trade['result'] = 'WIN'
-                closed_trades_history.append(trade)
-                send_telegram_alert(f"🎯 *تم تحقيق الهدف (WIN)* للعملة {symbol} بسعر {curr_price}")
-                del active_trades[symbol]
+                closed_trades_history[timeframe].append(trade)
+                send_telegram_alert(f"🎯 *[فريم {timeframe}] تحقيق هدف (WIN)*\nالعملة: {symbol} بسعر {curr_price}")
+                del tf_trades[symbol]
             elif curr_price <= trade['sl']:
                 trade['result'] = 'LOSS'
-                closed_trades_history.append(trade)
-                send_telegram_alert(f"🛑 *ضرب وقف الخسارة (LOSS)* للعملة {symbol} بسعر {curr_price}")
-                del active_trades[symbol]
+                closed_trades_history[timeframe].append(trade)
+                send_telegram_alert(f"🛑 *[فريم {timeframe}] ضرب وقف خسارة (LOSS)*\nالعملة: {symbol} بسعر {curr_price}")
+                del tf_trades[symbol]
         elif trade['type'] == 'SELL':
             if curr_price <= trade['tp']:
                 trade['result'] = 'WIN'
-                closed_trades_history.append(trade)
-                send_telegram_alert(f"🎯 *تم تحقيق الهدف (WIN)* للعملة {symbol} بسعر {curr_price}")
-                del active_trades[symbol]
+                closed_trades_history[timeframe].append(trade)
+                send_telegram_alert(f"🎯 *[فريم {timeframe}] تحقيق هدف (WIN)*\nالعملة: {symbol} بسعر {curr_price}")
+                del tf_trades[symbol]
             elif curr_price >= trade['sl']:
                 trade['result'] = 'LOSS'
-                closed_trades_history.append(trade)
-                send_telegram_alert(f"🛑 *ضرب وقف الخسارة (LOSS)* للعملة {symbol} بسعر {curr_price}")
-                del active_trades[symbol]
+                closed_trades_history[timeframe].append(trade)
+                send_telegram_alert(f"🛑 *[فريم {timeframe}] ضرب وقف خسارة (LOSS)*\nالعملة: {symbol} بسعر {curr_price}")
+                del tf_trades[symbol]
 
-        if len(closed_trades_history) >= 20:
-            batch = closed_trades_history[:20]
-            closed_trades_history = closed_trades_history[20:]
-            chart_bytes = generate_performance_chart(batch)
+        if len(closed_trades_history[timeframe]) >= 20:
+            batch = closed_trades_history[timeframe][:20]
+            closed_trades_history[timeframe] = closed_trades_history[timeframe][20:]
+            chart_bytes = generate_performance_chart(batch, timeframe)
             wins = sum(1 for t in batch if t['result'] == 'WIN')
             losses = sum(1 for t in batch if t['result'] == 'LOSS')
             wr = (wins / 20) * 100
-            caption = f"📊 *تقرير أداء آخر 20 صفقة*\n✅ صفقات ناجحة: {wins}\n❌ صفقات خاسرة: {losses}\n📈 نسبة الربح: {wr:.1f}%"
+            caption = f"📊 *تقرير أداء فريم ({timeframe}) - آخر 20 صفقة*\n✅ صفقات ناجحة: {wins}\n❌ صفقات خاسرة: {losses}\n📈 نسبة الربح: {wr:.1f}%"
             send_telegram_photo(chart_bytes, caption)
 
-def analyze_symbol(symbol):
+def analyze_symbol(symbol, timeframe):
     global active_trades
     try:
-        df = get_binance_klines(symbol, TIMEFRAME, limit=250)
+        df = get_binance_klines(symbol, timeframe, limit=250)
         if df is None or len(df) < 50:
             return
             
         curr_price = df['close'].iloc[-2]
 
-        if symbol in active_trades:
+        if symbol in active_trades[timeframe]:
             return
-        if len(active_trades) >= MAX_OPEN_TRADES:
+        if len(active_trades[timeframe]) >= MAX_OPEN_TRADES_PER_TF:
             return
 
-        # حساب مؤشر الماكد (الخط الأزرق: MACD، الخط البرتقالي: Signal Line)
         macd_object = ta.trend.MACD(close=df["close"], window_slow=26, window_fast=12, window_sign=9)
         df["macd"] = macd_object.macd()
         df["signal"] = macd_object.macd_signal()
@@ -177,17 +181,14 @@ def analyze_symbol(symbol):
 
         signal_type = None
 
-        # شروط الدخول الجديدة بناءً على طلبك:
-        # 1. صفقة شراء (BUY): تقاطع الخط الأزرق (MACD) فوق البرتقالي (Signal) تحت خط الصفر
+        # الشروط: شراء (تحت الصفر)، بيع (فوق الصفر)
         if prev_macd <= prev_signal and curr_macd > curr_signal and curr_macd < 0:
             signal_type = "BUY"
-
-        # 2. صفقة بيع (SELL): تقاطع الخط الأزرق (MACD) تحت البرتقالي (Signal) فوق خط الصفر
         elif prev_macd >= prev_signal and curr_macd < curr_signal and curr_macd > 0:
             signal_type = "SELL"
 
-        if signal_type and last_signals.get(symbol) != signal_type:
-            last_signals[symbol] = signal_type
+        if signal_type and last_signals[timeframe].get(symbol) != signal_type:
+            last_signals[timeframe][symbol] = signal_type
             
             distance = curr_price * 0.015
             if signal_type == "BUY":
@@ -197,42 +198,44 @@ def analyze_symbol(symbol):
                 sl = curr_price + distance
                 tp = curr_price - (distance * 2)
 
-            msg = f"🚨 *إشارة {signal_type} للعملة {symbol}*\n💰 سعر الدخول: {curr_price}\n🎯 الهدف (TP): {tp:.4f}\n🛑 وقف الخسارة (SL): {sl:.4f}"
+            msg = f"🚨 *إشارة {signal_type} [فريم {timeframe}]*\n🪙 العملة: {symbol}\n💰 سعر الدخول: {curr_price}\n🎯 الهدف: {tp:.4f}\n🛑 وقف الخسارة: {sl:.4f}"
             send_telegram_alert(msg)
-            active_trades[symbol] = {"type": signal_type, "tp": tp, "sl": sl}
+            active_trades[timeframe][symbol] = {"type": signal_type, "tp": tp, "sl": sl}
     except Exception as e:
-        print(f"خطأ في تحليل العملة {symbol}: {e}")
+        print(f"خطأ في تحليل العملة {symbol} على فريم {timeframe}: {e}")
 
-def run_bot():
-    print(f"🚀 بدأ تشغيل البوت في الخلفية لمراقبة {len(SYMBOLS)} زوجاً...")
-    send_telegram_alert(f"🤖 *تم تحديث وتشغيل بوت التداول بنجاح!*\nاستراتيجية تقاطع الماكد (تحت الصفر للشراء / فوق الصفر للبيع).\nجاري مراقبة {len(SYMBOLS)} زوجاً نشطاً.")
-    
+def run_timeframe_bot(timeframe):
+    print(f"🚀 بدأ تشغيل مراقبة الفريم: {timeframe}")
     while True:
         try:
-            print("⏳ جاري فحص الأسواق وتحديث الصفقات...")
-            check_and_close_trades()
+            check_and_close_trades(timeframe)
             with ThreadPoolExecutor(max_workers=10) as executor:
-                executor.map(analyze_symbol, SYMBOLS)
-            print("✅ انتهت دورة الفحص بنجاح. في انتظار الدورة القادمة...")
+                for symbol in SYMBOLS:
+                    executor.submit(analyze_symbol, symbol, timeframe)
         except Exception as e:
-            print(f"❌ خطأ عام في حلقة التداول الرئيسية: {e}")
+            print(f"❌ خطأ في حلقة الفريم {timeframe}: {e}")
         
-        time.sleep(120)
+        # الانتظار حسب الفريم (مثلاً دقيقة واحدة لفريم 15د، أو 2 دقيقة لفريم 1س)
+        time.sleep(60 if timeframe == "15m" else 120)
 
 class SimpleHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
-        self.wfile.write(b"Trading Bot is running successfully!")
+        self.wfile.write(b"Multi-Timeframe Trading Bot is running successfully!")
 
     def do_HEAD(self):
         self.send_response(200)
         self.end_headers()
 
 if __name__ == "__main__":
-    bot_thread = threading.Thread(target=run_bot)
-    bot_thread.daemon = True
-    bot_thread.start()
+    send_telegram_alert(f"🤖 *تم تشغيل بوت التداول المتعدد الفريمات بنجاح!*\nالفريمات المفعلة: `15m` و `1h`\nعدد الأزواج المراقبَة: {len(SYMBOLS)} زوجاً.")
+
+    # تشغيل كل فريم في خيط (Thread) مستقل تماماً
+    for tf in TIMEFRAMES:
+        t = threading.Thread(target=run_timeframe_bot, args=(tf,))
+        t.daemon = True
+        t.start()
 
     port = int(os.environ.get("PORT", 10000))
     server = HTTPServer(("0.0.0.0", port), SimpleHandler)
