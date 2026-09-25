@@ -242,9 +242,6 @@ def analyze_symbol(symbol):
     curr_macd = df["macd"].iloc[-2]
     curr_signal = df["signal"].iloc[-2]
 
-    recent_low = df['low'].iloc[-11:-1].min()
-    recent_high = df['high'].iloc[-11:-1].max()
-
     signal_type = None
     if prev_macd <= prev_signal and curr_macd > curr_signal:
         signal_type = "BUY"
@@ -255,6 +252,7 @@ def analyze_symbol(symbol):
         last_signals[symbol] = signal_type
 
         if signal_type == "BUY":
+            recent_low = df['low'].iloc[-11:-1].min()
             risk = curr_price - recent_low
             tp_price = curr_price + (risk * 2)
             sl_price = recent_low
@@ -267,6 +265,7 @@ def analyze_symbol(symbol):
                 f"• *الصفقات النشطة حالياً:* `{len(active_trades) + 1}/{MAX_OPEN_TRADES}`"
             )
         else:
+            recent_high = df['high'].iloc[-11:-1].max()
             risk = recent_high - curr_price
             tp_price = curr_price - (risk * 2)
             sl_price = recent_high
@@ -288,11 +287,11 @@ def analyze_symbol(symbol):
         send_telegram_alert(msg)
 
 # ==========================================
-# 3. تشغيل الفحص المتوازي
+# 3. تشغيل الفحص المتوازي وخيط البوت
 # ==========================================
 def run_bot():
     print(f"✅ تم تشغيل البوت @lahscenxd_bot بحد أقصى {MAX_OPEN_TRADES} صفقة على فريم [{TIMEFRAME}] لمراقبة {len(SYMBOLS)} عملة...")
-    send_telegram_alert(f"🤖 *تم تحديث وتشغيل بوت الماكدي الجديد (@lahscenxd_bot)*\n• مراقبة `{len(SYMBOLS)}` عملة رقمية 🚀\n• وضع الحماية مفعّل 🔒")
+    send_telegram_alert(f"🤖 *تم تشغيل بوت الماكدي بنجاح (@lahscenxd_bot)*\n• مراقبة `{len(SYMBOLS)}` عملة رقمية 🚀\n• وضع الحماية مفعّل 🔒")
 
     while True:
         print(f"🔄 بدء دورة فحص جديدة لـ {len(SYMBOLS)} عملة...")
@@ -303,4 +302,11 @@ def run_bot():
         time.sleep(180)
 
 if __name__ == "__main__":
-    run_bot()
+    bot_thread = threading.Thread(target=run_bot)
+    bot_thread.daemon = True
+    bot_thread.start()
+
+    port = int(os.environ.get("PORT", 10000))
+    server = HTTPServer(("0.0.0.0", port), SimpleHandler)
+    print(f"🌐 السيرفر يعمل على المنفذ {port}")
+    server.serve_forever()
