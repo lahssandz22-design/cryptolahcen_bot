@@ -27,21 +27,19 @@ def fetch_all_usdt_symbols():
         for s in data.get('symbols', []):
             if s['status'] == 'TRADING' and s['quoteAsset'] == 'USDT':
                 symbol_name = s['symbol']
-                # استبعاد العملات المستقرة المكررة أو غير المفيدة للتداول التجاري البحت
                 if not any(stable in symbol_name for stable in ['USDCUSDT', 'FDUSDUSDT', 'TUSDUSDT', 'USDPUSDT']):
                     symbols.append(symbol_name)
         print(f"✅ تم بنجاح جلب {len(symbols)} زوجاً للتداول من بينانس تلقائياً.")
         return symbols
     except Exception as e:
         print(f"❌ خطأ في جلب الأزواج تلقائياً، سيتم استخدام القائمة الاحتياطية: {e}")
-        # قائمة احتياطية في حال انقطاع الاتصال المؤقت بـ API بينانس
         return ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT"]
 
 # جلب جميع العملات المتاحة ديناميكياً
 SYMBOLS = fetch_all_usdt_symbols()
 
 TIMEFRAME = "1h"
-MAX_OPEN_TRADES = 40  # زيادة الحد الأقصى للصفقات المفتوحة لتناسب العدد الهائل من العملات
+MAX_OPEN_TRADES = 40  
 
 active_trades = {}
 last_signals = {symbol: None for symbol in SYMBOLS}
@@ -206,11 +204,10 @@ def analyze_symbol(symbol):
 
 def run_bot():
     print(f"🚀 بدأ تشغيل البوت في الخلفية لمراقبة جميع أزواج بينانس ({len(SYMBOLS)} زوجاً)...")
-    # تم تصحيح نص الرسالة أدناه بإزالة علامة الدولار ($) لكي يظهر العدد الحقيقي بشكل صحيح
+    # تم إزالة علامة الدولار بشكل نهائي من هنا لتظهر القيمة الحقيقية الصحيحة
     send_telegram_alert(f"🤖 *تم تشغيل بوت التداول بنجاح لمراقبة جميع عملات وأزواج بينانس ({len(SYMBOLS)} زوجاً)* باستخدام المتوسط 200 والماكدي!")
     while True:
         check_and_close_trades()
-        # زيادة عدد الـ workers لتسريع الفحص نظراً لزيادة عدد العملات
         with ThreadPoolExecutor(max_workers=20) as executor:
             executor.map(analyze_symbol, SYMBOLS)
         time.sleep(180)
@@ -230,6 +227,7 @@ if __name__ == "__main__":
     bot_thread.daemon = True
     bot_thread.start()
 
+    port = int(os.environ.com("PORT", 10000) if hasattr(os, 'environ') else 10000)
     port = int(os.environ.get("PORT", 10000))
     server = HTTPServer(("0.0.0.0", port), SimpleHandler)
     server.serve_forever()
