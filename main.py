@@ -41,11 +41,9 @@ SYMBOLS = [
     "JASMYUSDT", "HOTUSDT", "ENJUSDT", "BATUSDT", "ZILUSDT"
 ]
 
-# الفريمات المطلوبة (يمكنك تعديلها مثل "15m", "1h", "4h")
 TIMEFRAMES = ["15m", "1h"]
 MAX_OPEN_TRADES_PER_TF = 20
 
-# تخزين الصفقات وإلتفاف الإشارات لكل فريم على حدة
 active_trades = {tf: {} for tf in TIMEFRAMES}
 last_signals = {tf: {symbol: None for symbol in SYMBOLS} for tf in TIMEFRAMES}
 closed_trades_history = {tf: [] for tf in TIMEFRAMES}
@@ -174,17 +172,17 @@ def analyze_symbol(symbol, timeframe):
         df["macd"] = macd_object.macd()
         df["signal"] = macd_object.macd_signal()
 
-        prev_macd = df["macd"].iloc[-3]
-        prev_signal = df["signal"].iloc[-3]
         curr_macd = df["macd"].iloc[-2]
         curr_signal = df["signal"].iloc[-2]
 
         signal_type = None
 
-        # الشروط: شراء (تحت الصفر)، بيع (فوق الصفر)
-        if prev_macd <= prev_signal and curr_macd > curr_signal and curr_macd < 0:
+        # شرط مرن وسريع بناءً على اتجاه الزخم الحالي (MACD):
+        # شراء: خط الماكد فوق خط الإشارة وتحت الصفر
+        if curr_macd > curr_signal and curr_macd < 0:
             signal_type = "BUY"
-        elif prev_macd >= prev_signal and curr_macd < curr_signal and curr_macd > 0:
+        # بيع: خط الماكد تحت خط الإشارة وفوق الصفر
+        elif curr_macd < curr_signal and curr_macd > 0:
             signal_type = "SELL"
 
         if signal_type and last_signals[timeframe].get(symbol) != signal_type:
@@ -215,23 +213,21 @@ def run_timeframe_bot(timeframe):
         except Exception as e:
             print(f"❌ خطأ في حلقة الفريم {timeframe}: {e}")
         
-        # الانتظار حسب الفريم (مثلاً دقيقة واحدة لفريم 15د، أو 2 دقيقة لفريم 1س)
         time.sleep(60 if timeframe == "15m" else 120)
 
 class SimpleHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
-        self.wfile.write(b"Multi-Timeframe Trading Bot is running successfully!")
+        self.wfile.write(b"Flexible MACD Trading Bot is running successfully!")
 
     def do_HEAD(self):
         self.send_response(200)
         self.end_headers()
 
 if __name__ == "__main__":
-    send_telegram_alert(f"🤖 *تم تشغيل بوت التداول المتعدد الفريمات بنجاح!*\nالفريمات المفعلة: `15m` و `1h`\nعدد الأزواج المراقبَة: {len(SYMBOLS)} زوجاً.")
+    send_telegram_alert(f"🤖 *تم تحديث وتفعيل بوت التداول (الاستراتيجية المرنة)*\nالفريمات المفعلة: `15m` و `1h`\nعدد الأزواج المراقبَة: {len(SYMBOLS)} زوجاً.")
 
-    # تشغيل كل فريم في خيط (Thread) مستقل تماماً
     for tf in TIMEFRAMES:
         t = threading.Thread(target=run_timeframe_bot, args=(tf,))
         t.daemon = True
