@@ -18,7 +18,13 @@ TELEGRAM_BOT_TOKEN = "8617483405:AAGhNHH1A3X1twjDUU5fwdWr6rUYKMhc9gc"
 TELEGRAM_CHAT_ID = "7895743860"
 
 def fetch_all_usdt_symbols():
-    """جلب جميع أزواج العملات وأزواج الفوركس المرتبطة بـ USDT من بينانس تلقائياً"""
+    """جلب جميع أزواج العملات المرتبطة بـ USDT من بينانس تلقائياً مع وجود قائمة احتياطية ضخمة"""
+    fallback_symbols = [
+        "BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "ADAUSDT", "AVAXUSDT", 
+        "DOGEUSDT", "DOTUSDT", "MATICUSDT", "LINKUSDT", "UNIUSDT", "ATOMUSDT", "LTCUSDT",
+        "ETCUSDT", "NEARUSDT", "APTUSDT", "SUIUSDT", "ARBUSDT", "OPUSDT", "INJUSDT",
+        "RENDERUSDT", "FETUSDT", "AGIXUSDT", "OCEANUSDT", "RNDRUSDT", "TIAUSDT", "SEIUSDT"
+    ]
     url = "https://api.binance.com/api/v3/exchangeInfo"
     try:
         response = requests.get(url, timeout=10)
@@ -29,11 +35,15 @@ def fetch_all_usdt_symbols():
                 symbol_name = s['symbol']
                 if not any(stable in symbol_name for stable in ['USDCUSDT', 'FDUSDUSDT', 'TUSDUSDT', 'USDPUSDT']):
                     symbols.append(symbol_name)
-        print(f"✅ تم بنجاح جلب {len(symbols)} زوجاً للتداول من بينانس تلقائياً.")
-        return symbols
+        if len(symbols) > 0:
+            print(f"✅ تم بنجاح جلب {len(symbols)} زوجاً للتداول من بينانس تلقائياً.")
+            return symbols
+        else:
+            print("⚠️ القائمة المسترجعة فارغة، سيتم استخدام القائمة الاحتياطية.")
+            return fallback_symbols
     except Exception as e:
         print(f"❌ خطأ في جلب الأزواج تلقائياً، سيتم استخدام القائمة الاحتياطية: {e}")
-        return ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT"]
+        return fallback_symbols
 
 # جلب جميع العملات المتاحة ديناميكياً
 SYMBOLS = fetch_all_usdt_symbols()
