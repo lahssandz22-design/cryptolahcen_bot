@@ -12,7 +12,7 @@ import requests
 import ta
 
 # ==========================================
-# 1. إعدادات التلجرام وقائمة الـ 200 زوج (من الأقوى إلى المتوسطة)
+# 1. إعدادات التلجرام وقائمة الـ 200 زوج
 # ==========================================
 TELEGRAM_BOT_TOKEN = "8617483405:AAGhNHH1A3X1twjDUU5fwdWr6rUYKMhc9gc"
 TELEGRAM_CHAT_ID = "7895743860"
@@ -169,13 +169,10 @@ def check_and_close_trades():
 def analyze_symbol(symbol):
     global active_trades
     df = get_binance_klines(symbol, TIMEFRAME, limit=250)
-    if df is None or len(df) < 200:
+    if df is None or len(df) < 50:
         return
         
     curr_price = df['close'].iloc[-2]
-    
-    df['sma200'] = df['close'].rolling(window=200).mean()
-    curr_sma200 = df['sma200'].iloc[-2]
 
     if symbol in active_trades:
         return
@@ -193,13 +190,11 @@ def analyze_symbol(symbol):
 
     signal_type = None
 
-    if curr_price > curr_sma200:
-        if prev_macd <= prev_signal and curr_macd > curr_signal and curr_macd < 0:
-            signal_type = "BUY"
-
-    elif curr_price < curr_sma200:
-        if prev_macd >= prev_signal and curr_macd < curr_signal and curr_macd < 0:
-            signal_type = "SELL"
+    # شروط التقاطع تحت خط الصفر بناءً على الصورة
+    if prev_macd <= prev_signal and curr_macd > curr_signal and curr_macd < 0:
+        signal_type = "BUY"
+    elif prev_macd >= prev_signal and curr_macd < curr_signal and curr_macd < 0:
+        signal_type = "SELL"
 
     if signal_type and last_signals.get(symbol) != signal_type:
         last_signals[symbol] = signal_type
@@ -212,16 +207,15 @@ def analyze_symbol(symbol):
             sl = curr_price + distance
             tp = curr_price - (distance * 2)
 
-        msg = f"إشارة {signal_type} للعملة {symbol}\nسعر الدخول: {curr_price}\nالمتوسط 200: {curr_sma200:.2f}"
+        msg = f"إشارة {signal_type} للعملة {symbol}\nسعر الدخول: {curr_price}"
         send_telegram_alert(msg)
         active_trades[symbol] = {"type": signal_type, "tp": tp, "sl": sl}
 
 def run_bot():
     print(f"🚀 بدأ تشغيل البوت في الخلفية لمراقبة العملات ({len(SYMBOLS)} زوجاً)...")
-    send_telegram_alert(f"🤖 *تم تشغيل بوت التداول بنجاح لمراقبة ({len(SYMBOLS)} زوجاً)* من عملات بينانس الكبرى والمتوسطة!")
+    send_telegram_alert(f"🤖 *تم تشغيل بوت التداول بنجاح لمراقبة ({len(SYMBOLS)} زوجاً)* بناءً على تقاطع MACD تحت الصفر!")
     while True:
         check_and_close_trades()
-        # استخدام معالجة متوازية واسعة النطاق لفحص 200 عملة بسرعة وسلاسة
         with ThreadPoolExecutor(max_workers=25) as executor:
             executor.map(analyze_symbol, SYMBOLS)
         time.sleep(180)
