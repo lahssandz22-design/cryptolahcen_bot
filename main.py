@@ -12,50 +12,33 @@ import requests
 import ta
 
 # ==========================================
-# 1. إعدادات التلجرام وقائمة الـ 200 زوج
+# 1. إعدادات التلجرام وبينانس
 # ==========================================
 TELEGRAM_BOT_TOKEN = "8617483405:AAGhNHH1A3X1twjDUU5fwdWr6rUYKMhc9gc"
 TELEGRAM_CHAT_ID = "7895743860"
 
-SYMBOLS = [
-    # الكبرى والرئيسية
-    "BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "ADAUSDT", "AVAXUSDT", 
-    "DOGEUSDT", "DOTUSDT", "MATICUSDT", "LINKUSDT", "UNIUSDT", "ATOMUSDT", "LTCUSDT",
-    "ETCUSDT", "NEARUSDT", "APTUSDT", "SUIUSDT", "ARBUSDT", "OPUSDT", "INJUSDT",
-    "RENDERUSDT", "FETUSDT", "AGIXUSDT", "OCEANUSDT", "TIAUSDT", "SEIUSDT", "SHIBUSDT",
-    "PEPEUSDT", "FLOKIUSDT", "ICPUSDT", "FILUSDT", "STXUSDT", "IMXUSDT", "RUNEUSDT",
-    "GRTUSDT", "ALGOUSDT", "FTMUSDT", "SANDUSDT", "MANAUSDT", "AXSUSDT", "GALAUSDT",
-    "CHZUSDT", "CRVUSDT", "AAVEUSDT", "SNXUSDT", "MKRUSDT", "COMPUSDT", "LDOUSDT",
-    "PENDLEUSDT", "JUPUSDT", "PYTHUSDT", "WIFUSDT", "BONKUSDT", "JASMYUSDT", "ORDIUSDT",
-    # عملات الطبقة الثانية والذكاء الاصطناعي والألعاب
-    "SATSUSDT", "RSRUSDT", "ACEUSDT", "PORTALUSDT", "PIXELUSDT", "STRKUSDT", "MANTAUSDT",
-    "ALTUSDT", "XAIUSDT", "AIUSDT", "NFPUSDT", "ZETAUSDT", "DYMUSDT", "AXLUSDT",
-    "OMUSDT", "BBUSDT", "REZUSDT", "IOUSDT", "ZKUSDT", "LISTAUSDT", "BANANAUSDT",
-    "TONUSDT", "NOTUSDT", "DOGSUSDT", "CATIUSDT", "HMSTRUSDT", "EIGENUSDT", "NEIROUSDT",
-    "TURBOUSDT", "1000SATSUSDT", "1000RATSUSDT", "POLYXUSDT", "CFXUSDT", "KASUSDT",
-    "ARUSDT", "ROSEUSDT", "PHBUSDT", "IDUSDT", "SXPUSDT", "CHRUSDT", "HBARUSDT",
-    "ENJUSDT", "BATUSDT", "ZRXUSDT", "KNCUSDT", "IOSTUSDT", "ONTUSDT", "ZILUSDT",
-    "VETUSDT", "THETAUSDT", "XTZUSDT", "EOSUSDT", "BCHUSDT", "XLMUSDT", "DASHUSDT",
-    "ZECUSDT", "KSMUSDT", "STORJUSDT", "LRCUSDT", "ANKRUSDT", "SCUSDT", "ZENUSDT",
-    "RVNUSDT", "COTIUSDT", "BLZUSDT", "HIFIUSDT", "CYBERUSDT", "ARKMUSDT", "MEMEUSDT",
-    # عملات إضافية لتغطية نطاق واسع ومتوسط (أكثر من 200 زوج)
-    "VANRYUSDT", "AEVOUSDT", "ETHFIUSDT", "SAGAUSDT", "TNSRUSDT", "MERLUSDT", "ZROUSDT",
-    "AVAILUSDT", "SYNUSDT", "LQTYUSDT", "COMBOUSDT", "IQUSDT", "DGBUSDT", "GMXUSDT",
-    "GNSUSDT", "ILVUSDT", "POLUSDT", "BOMEUSDT", "SANTOSUSDT", "LazioUSDT", "PORTOUSDT",
-    "ALPINEUSDT", "PSGUSDT", "BARUSDT", "CITYUSDT", "INTERUSDT", "ACMUSDT", "ASRUSDT",
-    "ATMUSDT", "OGUSDT", "GALUSDT", "HQUSDT", "HIGHUSDT", "HOOKUSDT", "IDEXUSDT",
-    "MAGICUSDT", "VOXELUSDT", "GHSTUSDT", "UNIUSDT", "SPELLUSDT", "KP3RUSDT", "BIFIUSDT",
-    "FARMUSDT", "MDTUSDT", "STPTUSDT", "RADUSDT", "POLSUSDT", "ALPHAUSDT", "BAKEUSDT",
-    "BURGERUSDT", "C98USDT", "DEXEUSDT", "DFUSDT", "DKAUSDT", "FORUSDT", "FRONTUSDT",
-    "GTCUSDT", "HARDUSDT", "KEEPUSDT", "LITUSDT", "MOVRUSDT", "NULSUSDT", "OXTUSDT",
-    "PERPUSDT", "PONDUSDT", "QIUSDT", "QTUMUSDT", "RAYUSDT", "REEFUSDT", "RFUELUSDT",
-    "RLCUSDT", "SCRTUSDT", "SUNUSDT", "SUPERUSDT", "TKOUSDT", "TLMUSDT", "TRUUSDT",
-    "UNFIUSDT", "VIDTUSDT", "WNXMUSDT", "XEMUSDT", "YFIUSDT", "YFIIUSDT", "PROMUSDT",
-    "BLURUSDT", "ACEUSDT", "PORTALUSDT", "PIXELUSDT", "MAVUSDT", "PENDLEUSDT", "SUIUSDT"
-]
+def fetch_top_usdt_symbols():
+    """جلب أهم وأبرز أزواج USDT النشطة من بينانس لتفادي الضغط أو الحظر"""
+    url = "https://api.binance.com/api/v3/exchangeInfo"
+    try:
+        response = requests.get(url, timeout=10)
+        data = response.json()
+        symbols = []
+        for s in data.get('symbols', []):
+            if s['status'] == 'TRADING' and s['quoteAsset'] == 'USDT':
+                symbol_name = s['symbol']
+                if not any(stable in symbol_name for stable in ['USDC', 'FDUSD', 'TUSD', 'USDP', 'BUSD']):
+                    symbols.append(symbol_name)
+        symbols = symbols[:50]
+        print(f"✅ تم بنجاح جلب {len(symbols)} زوجاً للتداول من بينانس.")
+        return symbols
+    except Exception as e:
+        print(f"❌ خطأ في جلب الأزواج تلقائياً، استخدام القائمة الافتراضية: {e}")
+        return ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "ADAUSDT", "DOGEUSDT", "AVAXUSDT"]
 
+SYMBOLS = fetch_top_usdt_symbols()
 TIMEFRAME = "1h"
-MAX_OPEN_TRADES = 50  
+MAX_OPEN_TRADES = 20
 
 active_trades = {}
 last_signals = {symbol: None for symbol in SYMBOLS}
@@ -69,7 +52,8 @@ def send_telegram_alert(message):
         "parse_mode": "Markdown"
     }
     try:
-        requests.post(url, data=payload, timeout=10)
+        response = requests.post(url, data=payload, timeout=10)
+        print(f"Telegram response: {response.text}")
     except Exception as e:
         print(f"❌ خطأ في إرسال التلجرام: {e}")
 
@@ -78,7 +62,8 @@ def send_telegram_photo(photo_bytes, caption):
     files = {'photo': ('performance.png', photo_bytes, 'image/png')}
     data = {'chat_id': TELEGRAM_CHAT_ID, 'caption': caption, 'parse_mode': 'Markdown'}
     try:
-        requests.post(url, data=data, files=files, timeout=15)
+        response = requests.post(url, data=data, files=files, timeout=15)
+        print(f"Telegram photo response: {response.text}")
     except Exception as e:
         print(f"❌ خطأ في إرسال الصورة للتلجرام: {e}")
 
@@ -127,11 +112,11 @@ def generate_performance_chart(trades_batch):
 def check_and_close_trades():
     global active_trades, closed_trades_history
     for symbol in list(active_trades.keys()):
-        trade = active_trades[symbol]
         df = get_binance_klines(symbol, TIMEFRAME, limit=10)
         if df is None:
             continue
         curr_price = df['close'].iloc[-1]
+        trade = active_trades[symbol]
         
         if trade['type'] == 'BUY':
             if curr_price >= trade['tp']:
@@ -168,59 +153,71 @@ def check_and_close_trades():
 
 def analyze_symbol(symbol):
     global active_trades
-    df = get_binance_klines(symbol, TIMEFRAME, limit=250)
-    if df is None or len(df) < 50:
-        return
-        
-    curr_price = df['close'].iloc[-2]
+    try:
+        df = get_binance_klines(symbol, TIMEFRAME, limit=250)
+        if df is None or len(df) < 50:
+            return
+            
+        curr_price = df['close'].iloc[-2]
 
-    if symbol in active_trades:
-        return
-    if len(active_trades) >= MAX_OPEN_TRADES:
-        return
+        if symbol in active_trades:
+            return
+        if len(active_trades) >= MAX_OPEN_TRADES:
+            return
 
-    macd_object = ta.trend.MACD(close=df["close"], window_slow=26, window_fast=12, window_sign=9)
-    df["macd"] = macd_object.macd()
-    df["signal"] = macd_object.macd_signal()
+        # حساب مؤشر الماكد (الخط الأزرق: MACD، الخط البرتقالي: Signal Line)
+        macd_object = ta.trend.MACD(close=df["close"], window_slow=26, window_fast=12, window_sign=9)
+        df["macd"] = macd_object.macd()
+        df["signal"] = macd_object.macd_signal()
 
-    prev_macd = df["macd"].iloc[-3]
-    prev_signal = df["signal"].iloc[-3]
-    curr_macd = df["macd"].iloc[-2]
-    curr_signal = df["signal"].iloc[-2]
+        prev_macd = df["macd"].iloc[-3]
+        prev_signal = df["signal"].iloc[-3]
+        curr_macd = df["macd"].iloc[-2]
+        curr_signal = df["signal"].iloc[-2]
 
-    signal_type = None
+        signal_type = None
 
-    # شروط التقاطع الجديدة حسب طلبك تماماً:
-    # شراء: تقاطع صعوداً وتحت خط الصفر
-    if prev_macd <= prev_signal and curr_macd > curr_signal and curr_macd < 0:
-        signal_type = "BUY"
-    # بيع: تقاطع هبوطاً وفوق خط الصفر
-    elif prev_macd >= prev_signal and curr_macd < curr_signal and curr_macd > 0:
-        signal_type = "SELL"
+        # شروط الدخول الجديدة بناءً على طلبك:
+        # 1. صفقة شراء (BUY): تقاطع الخط الأزرق (MACD) فوق البرتقالي (Signal) تحت خط الصفر
+        if prev_macd <= prev_signal and curr_macd > curr_signal and curr_macd < 0:
+            signal_type = "BUY"
 
-    if signal_type and last_signals.get(symbol) != signal_type:
-        last_signals[symbol] = signal_type
-        
-        distance = curr_price * 0.015
-        if signal_type == "BUY":
-            sl = curr_price - distance
-            tp = curr_price + (distance * 2)
-        else:
-            sl = curr_price + distance
-            tp = curr_price - (distance * 2)
+        # 2. صفقة بيع (SELL): تقاطع الخط الأزرق (MACD) تحت البرتقالي (Signal) فوق خط الصفر
+        elif prev_macd >= prev_signal and curr_macd < curr_signal and curr_macd > 0:
+            signal_type = "SELL"
 
-        msg = f"إشارة {signal_type} للعملة {symbol}\nسعر الدخول: {curr_price}"
-        send_telegram_alert(msg)
-        active_trades[symbol] = {"type": signal_type, "tp": tp, "sl": sl}
+        if signal_type and last_signals.get(symbol) != signal_type:
+            last_signals[symbol] = signal_type
+            
+            distance = curr_price * 0.015
+            if signal_type == "BUY":
+                sl = curr_price - distance
+                tp = curr_price + (distance * 2)
+            else:
+                sl = curr_price + distance
+                tp = curr_price - (distance * 2)
+
+            msg = f"🚨 *إشارة {signal_type} للعملة {symbol}*\n💰 سعر الدخول: {curr_price}\n🎯 الهدف (TP): {tp:.4f}\n🛑 وقف الخسارة (SL): {sl:.4f}"
+            send_telegram_alert(msg)
+            active_trades[symbol] = {"type": signal_type, "tp": tp, "sl": sl}
+    except Exception as e:
+        print(f"خطأ في تحليل العملة {symbol}: {e}")
 
 def run_bot():
-    print(f"🚀 بدأ تشغيل البوت في الخلفية لمراقبة العملات ({len(SYMBOLS)} زوجاً)...")
-    send_telegram_alert(f"🤖 *تم تشغيل بوت التداول بنجاح لمراقبة ({len(SYMBOLS)} زوجاً)* بالشروط الجديدة!")
+    print(f"🚀 بدأ تشغيل البوت في الخلفية لمراقبة {len(SYMBOLS)} زوجاً...")
+    send_telegram_alert(f"🤖 *تم تحديث وتشغيل بوت التداول بنجاح!*\nاستراتيجية تقاطع الماكد (تحت الصفر للشراء / فوق الصفر للبيع).\nجاري مراقبة {len(SYMBOLS)} زوجاً نشطاً.")
+    
     while True:
-        check_and_close_trades()
-        with ThreadPoolExecutor(max_workers=25) as executor:
-            executor.map(analyze_symbol, SYMBOLS)
-        time.sleep(180)
+        try:
+            print("⏳ جاري فحص الأسواق وتحديث الصفقات...")
+            check_and_close_trades()
+            with ThreadPoolExecutor(max_workers=10) as executor:
+                executor.map(analyze_symbol, SYMBOLS)
+            print("✅ انتهت دورة الفحص بنجاح. في انتظار الدورة القادمة...")
+        except Exception as e:
+            print(f"❌ خطأ عام في حلقة التداول الرئيسية: {e}")
+        
+        time.sleep(120)
 
 class SimpleHandler(BaseHTTPRequestHandler):
     def do_GET(self):
