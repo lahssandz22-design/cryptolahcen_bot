@@ -32,7 +32,7 @@ SYMBOLS = [
     "PYTHUSDT", "JUPUSDT", "STRKUSDT", "PORTALUSDT", "MAVUSDT",
     "PENDLEUSDT", "ACEUSDT", "NFPUSDT", "XAIUSDT", "AIUSDT",
     "BBUSDT", "REZUSDT", "IOUSDT", "ZKUSDT", "BANANAUSDT",
-    "RENDERUSDT", "TONUSDT", "HMSTRUSDT", "CATIUSDT", "DOGSUSDT",
+    "TONUSDT", "HMSTRUSDT", "CATIUSDT", "DOGSUSDT",
     "NEIROUSDT", "TURBOUSDT", "1000SATSUSDT", "1000RATSUSDT", "ORDIUSDT",
     "BOMEUSDT", "MEWUSDT", "SLERFUSDT", "POLUSDT", "EGLDUSDT",
     "ALGOUSDT", "HBARUSDT", "FTMUSDT", "FLOWUSDT", "THETAUSDT",
@@ -172,17 +172,17 @@ def analyze_symbol(symbol, timeframe):
         df["macd"] = macd_object.macd()
         df["signal"] = macd_object.macd_signal()
 
+        prev_macd = df["macd"].iloc[-3]
+        prev_signal = df["signal"].iloc[-3]
         curr_macd = df["macd"].iloc[-2]
         curr_signal = df["signal"].iloc[-2]
 
         signal_type = None
 
-        # شرط مرن وسريع بناءً على اتجاه الزخم الحالي (MACD):
-        # شراء: خط الماكد فوق خط الإشارة وتحت الصفر
-        if curr_macd > curr_signal and curr_macd < 0:
+        # شرط التقاطع السريع والمرن (صعوداً للشراء، هبوطاً للبيع)
+        if prev_macd <= prev_signal and curr_macd > curr_signal:
             signal_type = "BUY"
-        # بيع: خط الماكد تحت خط الإشارة وفوق الصفر
-        elif curr_macd < curr_signal and curr_macd > 0:
+        elif prev_macd >= prev_signal and curr_macd < curr_signal:
             signal_type = "SELL"
 
         if signal_type and last_signals[timeframe].get(symbol) != signal_type:
@@ -219,14 +219,14 @@ class SimpleHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
-        self.wfile.write(b"Flexible MACD Trading Bot is running successfully!")
+        self.wfile.write(b"Active Crossover Trading Bot is running successfully!")
 
     def do_HEAD(self):
         self.send_response(200)
         self.end_headers()
 
 if __name__ == "__main__":
-    send_telegram_alert(f"🤖 *تم تحديث وتفعيل بوت التداول (الاستراتيجية المرنة)*\nالفريمات المفعلة: `15m` و `1h`\nعدد الأزواج المراقبَة: {len(SYMBOLS)} زوجاً.")
+    send_telegram_alert(f"🤖 *تم تحديث بوت التداول (التقاطع السريع)*\nالفريمات المفعلة: `15m` و `1h`\nعدد الأزواج المراقبَة: {len(SYMBOLS)} زوجاً.")
 
     for tf in TIMEFRAMES:
         t = threading.Thread(target=run_timeframe_bot, args=(tf,))
