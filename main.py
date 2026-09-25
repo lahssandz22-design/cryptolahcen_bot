@@ -190,10 +190,12 @@ def analyze_symbol(symbol):
 
     signal_type = None
 
-    # شروط التقاطع تحت خط الصفر بناءً على الصورة
+    # شروط التقاطع الجديدة حسب طلبك تماماً:
+    # شراء: تقاطع صعوداً وتحت خط الصفر
     if prev_macd <= prev_signal and curr_macd > curr_signal and curr_macd < 0:
         signal_type = "BUY"
-    elif prev_macd >= prev_signal and curr_macd < curr_signal and curr_macd < 0:
+    # بيع: تقاطع هبوطاً وفوق خط الصفر
+    elif prev_macd >= prev_signal and curr_macd < curr_signal and curr_macd > 0:
         signal_type = "SELL"
 
     if signal_type and last_signals.get(symbol) != signal_type:
@@ -213,7 +215,7 @@ def analyze_symbol(symbol):
 
 def run_bot():
     print(f"🚀 بدأ تشغيل البوت في الخلفية لمراقبة العملات ({len(SYMBOLS)} زوجاً)...")
-    send_telegram_alert(f"🤖 *تم تشغيل بوت التداول بنجاح لمراقبة ({len(SYMBOLS)} زوجاً)* بناءً على تقاطع MACD تحت الصفر!")
+    send_telegram_alert(f"🤖 *تم تشغيل بوت التداول بنجاح لمراقبة ({len(SYMBOLS)} زوجاً)* بالشروط الجديدة!")
     while True:
         check_and_close_trades()
         with ThreadPoolExecutor(max_workers=25) as executor:
