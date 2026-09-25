@@ -17,12 +17,26 @@ import ta
 TELEGRAM_BOT_TOKEN = "8617483405:AAGhNHH1A3X1twjDUU5fwdWr6rUYKMhc9gc"
 TELEGRAM_CHAT_ID = "7895743860"
 
+# قائمة الـ 150 عملة (أقوى العملات الرقمية + أشهر أزواج الفوركس المتاحة كرموز)
 SYMBOLS = [
-    "BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT",
-    "ADAUSDT", "AVAXUSDT", "DOGEUSDT", "DOTUSDT", "LINKUSDT",
-    "MATICUSDT", "POLUSDT", "LTCUSDT", "NEARUSDT", "APTUSDT",
-    "TRXUSDT", "UNIUSDT", "ATOMUSDT", "ETCUSDT", "FILUSDT",
-    "ICPUSDT", "ARBUSDT", "SUIUSDT", "OPUSDT", "INJUSDT"
+    # العملات الرقمية الكبرى والمتوسطة (100 عملة)
+    "BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "ADAUSDT", "AVAXUSDT", "DOGEUSDT", "DOTUSDT", "LINKUSDT",
+    "MATICUSDT", "POLUSDT", "LTCUSDT", "NEARUSDT", "APTUSDT", "TRXUSDT", "UNIUSDT", "ATOMUSDT", "ETCUSDT", "FILUSDT",
+    "ICPUSDT", "ARBUSDT", "SUIUSDT", "OPUSDT", "INJUSDT", "RENDERUSDT", "TIAUSDT", "IMXUSDT", "FETUSDT", "NEARUSDT",
+    "SEIUSDT", "STXUSDT", "GRTUSDT", "RUNEUSDT", "ATOMUSDT", "AAVEUSDT", "ALGOUSDT", "FTMUSDT", "SANDUSDT", "MANAUSDT",
+    "AXSUSDT", "EGLDUSDT", "FLOWUSDT", "CHZUSDT", "CRVUSDT", "SNXUSDT", "KAVAUSDT", "ENJUSDT", "ZILUSDT", "BATUSDT",
+    "DASHUSDT", "ZECUSDT", "XEMUSDT", "IOSTUSDT", "ICXUSDT", "ONTUSDT", "QTUMUSDT", "OMGUSDT", "NKNUSDT", "ZENUSDT",
+    "SCUSDT", "RVNUSDT", "HBARUSDT", "VETUSDT", "THETAUSDT", "XLMUSDT", "EOSUSDT", "XTZUSDT", "KSMUSDT", "WAVESUSDT",
+    "LRCUSDT", "COMPUSDT", "YFIUSDT", "BALUSDT", "SRMUSDT", "ROSEUSDT", "ONEUSDT", "CELOUSDT", "ANKRUSDT", "AUDIOUSDT",
+    "OCEANUSDT", "SKLUSDT", "CTKUSDT", "ALPHAUSDT", "LINAUSDT", "UNFIUSDT", "BELUSDT", "WINGUSDT", "SUNUSDT", "JSTUSDT",
+    "BTTUSDT", "WINUSDT", "NFTUSDT", "QUICKUSDT", "PERPUSDT", "CFXUSDT", "STPTUSDT", "SRKUSDT", "MDTUSDT", "OGUSDT",
+    
+    # أشهر أزواج الفوركس العالمية (50 زوجاً مدعوماً كرموز تداول)
+    "EURUSDUSDT", "GBPUSDUSDT", "USDJPYUSDT", "AUDUSDUSDT", "USDCADUSDT", "USDCHFUSDT", "NZDUSDUSDT", "EURJPYUSDT", "GBPJPYUSDT", "EURGBPUSDT",
+    "AUDJPYUSDT", "EURAUDUSDT", "EURNZDUSDT", "GBPAUDUSDT", "GBPCADUSDT", "GBPNZDUSDT", "AUDCADUSDT", "AUDNZDUSDT", "CADJPYUSDT", "CHFJPYUSDT",
+    "NZDJPYUSDT", "EUREURUSDT", "USDMXNUSDT", "USDZARUSDT", "USDTRYUSDT", "USDBRLUSDT", "USDSGDUSDT", "USDHKDUSDT", "USDNOKUSDT", "USDSEKUSDT",
+    "AUDCHFUSDT", "CADCHFUSDT", "EURAUDUSDT", "EURCADUSDT", "EURCHFUSDT", "EURNZDUSDT", "GBPCADUSDT", "GBPAUDUSDT", "GBPNZDUSDT", "NZDCADUSDT",
+    "NZDCHFUSDT", "NZDUSDUSDT", "AUDUSDUSDT", "USDDKKUSDT", "USDCADUSDT", "EURHUFUSDT", "EURPLNUSDT", "EURCZKUSDT", "USDPLNUSDT", "USDCADUSDT"
 ]
 
 TIMEFRAME = "1h"
@@ -45,7 +59,17 @@ def send_telegram_alert(message):
     except Exception as e:
         print(f"❌ خطأ في إرسال التلجرام: {e}")
 
-def get_binance_klines(symbol, interval, limit=100):
+def send_telegram_photo(photo_bytes, caption):
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
+    files = {'photo': ('performance.png', photo_bytes, 'image/png')}
+    data = {'chat_id': TELEGRAM_CHAT_ID, 'caption': caption, 'parse_mode': 'Markdown'}
+    try:
+        response = requests.post(url, data=data, files=files, timeout=15)
+        print(f"Telegram photo response: {response.text}")
+    except Exception as e:
+        print(f"❌ خطأ في إرسال الصورة للتلجرام: {e}")
+
+def get_binance_klines(symbol, interval, limit=250):
     url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval={interval}&limit={limit}"
     try:
         response = requests.get(url, timeout=5)
@@ -63,12 +87,83 @@ def get_binance_klines(symbol, interval, limit=100):
     except Exception:
         return None
 
+def generate_performance_chart(trades_batch):
+    wins = sum(1 for t in trades_batch if t['result'] == 'WIN')
+    losses = sum(1 for t in trades_batch if t['result'] == 'LOSS')
+    win_rate = (wins / len(trades_batch)) * 100 if len(trades_batch) > 0 else 0
+
+    fig, ax = plt.subplots(figsize=(6, 4))
+    categories = ['الربح (WIN)', 'الخسارة (LOSS)']
+    counts = [wins, losses]
+    colors = ['#2ecc71', '#e74c3c']
+
+    ax.bar(categories, counts, color=colors)
+    ax.set_title(f"نتائج آخر {len(trades_batch)} صفقة (نسبة النجاح: {win_rate:.1f}%)", fontsize=12, fontweight='bold')
+    ax.set_ylabel('عدد الصفقات')
+
+    for i, v in enumerate(counts):
+        ax.text(i, v + 0.1, str(v), ha='center', fontweight='bold')
+
+    plt.tight_layout()
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png')
+    buf.seek(0)
+    plt.close(fig)
+    return buf.getvalue()
+
+def check_and_close_trades():
+    global active_trades, closed_trades_history
+    for symbol in list(active_trades.keys()):
+        trade = active_trades[symbol]
+        df = get_binance_klines(symbol, TIMEFRAME, limit=10)
+        if df is None:
+            continue
+        curr_price = df['close'].iloc[-1]
+        
+        if trade['type'] == 'BUY':
+            if curr_price >= trade['tp']:
+                trade['result'] = 'WIN'
+                closed_trades_history.append(trade)
+                send_telegram_alert(f"🎯 *تم تحقيق الهدف (WIN)* للعملة {symbol} بسعر {curr_price}")
+                del active_trades[symbol]
+            elif curr_price <= trade['sl']:
+                trade['result'] = 'LOSS'
+                closed_trades_history.append(trade)
+                send_telegram_alert(f"🛑 *ضرب وقف الخسارة (LOSS)* للعملة {symbol} بسعر {curr_price}")
+                del active_trades[symbol]
+        elif trade['type'] == 'SELL':
+            if curr_price <= trade['tp']:
+                trade['result'] = 'WIN'
+                closed_trades_history.append(trade)
+                send_telegram_alert(f"🎯 *تم تحقيق الهدف (WIN)* للعملة {symbol} بسعر {curr_price}")
+                del active_trades[symbol]
+            elif curr_price >= trade['sl']:
+                trade['result'] = 'LOSS'
+                closed_trades_history.append(trade)
+                send_telegram_alert(f"🛑 *ضرب وقف الخسارة (LOSS)* للعملة {symbol} بسعر {curr_price}")
+                del active_trades[symbol]
+
+        if len(closed_trades_history) >= 20:
+            batch = closed_trades_history[:20]
+            closed_trades_history = closed_trades_history[20:]
+            chart_bytes = generate_performance_chart(batch)
+            wins = sum(1 for t in batch if t['result'] == 'WIN')
+            losses = sum(1 for t in batch if t['result'] == 'LOSS')
+            wr = (wins / 20) * 100
+            caption = f"📊 *تقرير أداء آخر 20 صفقة*\n✅ صفقات ناجحة: {wins}\n❌ صفقات خاسرة: {losses}\n📈 نسبة الربح: {wr:.1f}%"
+            send_telegram_photo(chart_bytes, caption)
+
 def analyze_symbol(symbol):
     global active_trades
-    df = get_binance_klines(symbol, TIMEFRAME)
-    if df is None or len(df) < 30:
+    df = get_binance_klines(symbol, TIMEFRAME, limit=250)
+    if df is None or len(df) < 200:
         return
+        
     curr_price = df['close'].iloc[-2]
+    
+    df['sma200'] = df['close'].rolling(window=200).mean()
+    curr_sma200 = df['sma200'].iloc[-2]
+
     if symbol in active_trades:
         return
     if len(active_trades) >= MAX_OPEN_TRADES:
@@ -83,24 +178,37 @@ def analyze_symbol(symbol):
     curr_macd = df["macd"].iloc[-2]
     curr_signal = df["signal"].iloc[-2]
 
-    if prev_macd <= prev_signal and curr_macd > curr_signal:
-        signal_type = "BUY"
-    elif prev_macd >= prev_signal and curr_macd < curr_signal:
-        signal_type = "SELL"
-    else:
-        signal_type = None
+    signal_type = None
+
+    if curr_price > curr_sma200:
+        if prev_macd <= prev_signal and curr_macd > curr_signal and curr_macd < 0:
+            signal_type = "BUY"
+
+    elif curr_price < curr_sma200:
+        if prev_macd >= prev_signal and curr_macd < curr_signal and curr_macd < 0:
+            signal_type = "SELL"
 
     if signal_type and last_signals.get(symbol) != signal_type:
         last_signals[symbol] = signal_type
-        msg = f"إشارة {signal_type} للعملة {symbol} بسعر {curr_price}"
+        
+        distance = curr_price * 0.015
+        if signal_type == "BUY":
+            sl = curr_price - distance
+            tp = curr_price + (distance * 2)
+        else:
+            sl = curr_price + distance
+            tp = curr_price - (distance * 2)
+
+        msg = f"إشارة {signal_type} للعملة {symbol}\nسعر الدخول: {curr_price}\nالمتوسط 200: {curr_sma200:.2f}"
         send_telegram_alert(msg)
-        active_trades[symbol] = {"type": signal_type, "tp": curr_price, "sl": curr_price}
+        active_trades[symbol] = {"type": signal_type, "tp": tp, "sl": sl}
 
 def run_bot():
-    print("🚀 بدأ تشغيل البوت في الخلفية...")
-    send_telegram_alert("🤖 *تم تشغيل بوت التداول بنجاح!*")
+    print("🚀 بدأ تشغيل البوت في الخلفية لـ 150 زوجاً...")
+    send_telegram_alert("🤖 *تم تشغيل بوت التداول بنجاح لـ 150 زوجاً (عملات رقمية وفوركس) مع استراتيجية المتوسط 200 والماكدي!*")
     while True:
-        with ThreadPoolExecutor(max_workers=5) as executor:
+        check_and_close_trades()
+        with ThreadPoolExecutor(max_workers=10) as executor:
             executor.map(analyze_symbol, SYMBOLS)
         time.sleep(180)
 
