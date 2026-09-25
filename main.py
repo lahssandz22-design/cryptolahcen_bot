@@ -12,28 +12,6 @@ import requests
 import ta
 
 # ==========================================
-# 0. سيرفر وهمي لإرضاء منصة Render وتشغيل البوت مجاناً
-# ==========================================
-class SimpleHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.end_headers()
-        self.wfile.write(b"Trading Bot is running successfully!")
-
-    def do_HEAD(self):
-        self.send_response(200)
-        self.end_headers()
-
-def run_server():
-    port = int(os.environ.get("PORT", 10000))
-    server = HTTPServer(("0.0.0.0", port), SimpleHandler)
-    server.serve_forever()
-
-server_thread = threading.Thread(target=run_server)
-server_thread.daemon = True
-server_thread.start()
-
-# ==========================================
 # 1. إعدادات التلجرام وبينانس
 # ==========================================
 TELEGRAM_BOT_TOKEN = "8617483405:AAGhNHH1a3X1twjDUU5fwdwr6rUYKMhc9gc"
@@ -86,11 +64,6 @@ closed_trades_history = []
 # ==========================================
 # 2. الدوال الأساسية للتلجرام والتحليل
 # ==========================================
-def verify_user(chat_id):
-    if str(chat_id) != str(TELEGRAM_CHAT_ID):
-        return False
-    return True
-
 def send_telegram_alert(message):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {
@@ -288,12 +261,10 @@ def analyze_symbol(symbol):
         send_telegram_alert(msg)
 
 # ==========================================
-# 3. تشغيل الفحص المتوازي
+# 3. تشغيل الفحص المتوازي والسيرفر
 # ==========================================
 def run_bot():
     print(f"✅ تم تشغيل البوت بحد أقصى {MAX_OPEN_TRADES} صفقة على فريم [{TIMEFRAME}] لمراقبة {len(SYMBOLS)} عملة...")
-    send_telegram_alert(f"🤖 *تم تشغيل بوت التداول بنجاح!*\n• مراقبة `{len(SYMBOLS)}` عملة رقمية 🚀\n• وضع الحماية مفعّل 🔒")
-
     while True:
         print(f"🔄 بدء دورة فحص جديدة لـ {len(SYMBOLS)} عملة...")
         with ThreadPoolExecutor(max_workers=10) as executor:
@@ -302,12 +273,27 @@ def run_bot():
         print(f"✅ انتهت الدورة. الصفقات النشطة حالياً: {len(active_trades)}/{MAX_OPEN_TRADES} | صفقات السجل حتى الآن: {len(closed_trades_history)}/20")
         time.sleep(180)
 
+class SimpleHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Trading Bot is running successfully!")
+
+    def do_HEAD(self):
+        self.send_response(200)
+        self.end_headers()
+
 if __name__ == "__main__":
+    # إرسال رسالة التليجرام فور بدء تشغيل السيرفر مباشرة
+    print("🚀 جاري إرسال تنبيه التشغيل عبر التليجرام...")
+    send_telegram_alert(f"🤖 *تم تشغيل بوت التداول بنجاح!*\n• مراقبة `{len(SYMBOLS)}` عملة رقمية 🚀\n• وضع الحماية مفعّل 🔒")
+
+    # تشغيل حلقة البوت في الخلفية
     bot_thread = threading.Thread(target=run_bot)
     bot_thread.daemon = True
     bot_thread.start()
 
-    # ابقِ السيرفر الرئيسي يعمل للاستجابة لـ Render
+    # تشغيل سيرفر الويب الخاص بـ Render
     port = int(os.environ.get("PORT", 10000))
     server = HTTPServer(("0.0.0.0", port), SimpleHandler)
     server.serve_forever()
