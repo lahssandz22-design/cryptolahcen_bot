@@ -17,30 +17,31 @@ import ta
 TELEGRAM_BOT_TOKEN = "8617483405:AAGhNHH1A3X1twjDUU5fwdWr6rUYKMhc9gc"
 TELEGRAM_CHAT_ID = "7895743860"
 
-# قائمة الـ 150 عملة (أقوى العملات الرقمية + أشهر أزواج الفوركس المتاحة كرموز)
-SYMBOLS = [
-    # العملات الرقمية الكبرى والمتوسطة (100 عملة)
-    "BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "ADAUSDT", "AVAXUSDT", "DOGEUSDT", "DOTUSDT", "LINKUSDT",
-    "MATICUSDT", "POLUSDT", "LTCUSDT", "NEARUSDT", "APTUSDT", "TRXUSDT", "UNIUSDT", "ATOMUSDT", "ETCUSDT", "FILUSDT",
-    "ICPUSDT", "ARBUSDT", "SUIUSDT", "OPUSDT", "INJUSDT", "RENDERUSDT", "TIAUSDT", "IMXUSDT", "FETUSDT", "NEARUSDT",
-    "SEIUSDT", "STXUSDT", "GRTUSDT", "RUNEUSDT", "ATOMUSDT", "AAVEUSDT", "ALGOUSDT", "FTMUSDT", "SANDUSDT", "MANAUSDT",
-    "AXSUSDT", "EGLDUSDT", "FLOWUSDT", "CHZUSDT", "CRVUSDT", "SNXUSDT", "KAVAUSDT", "ENJUSDT", "ZILUSDT", "BATUSDT",
-    "DASHUSDT", "ZECUSDT", "XEMUSDT", "IOSTUSDT", "ICXUSDT", "ONTUSDT", "QTUMUSDT", "OMGUSDT", "NKNUSDT", "ZENUSDT",
-    "SCUSDT", "RVNUSDT", "HBARUSDT", "VETUSDT", "THETAUSDT", "XLMUSDT", "EOSUSDT", "XTZUSDT", "KSMUSDT", "WAVESUSDT",
-    "LRCUSDT", "COMPUSDT", "YFIUSDT", "BALUSDT", "SRMUSDT", "ROSEUSDT", "ONEUSDT", "CELOUSDT", "ANKRUSDT", "AUDIOUSDT",
-    "OCEANUSDT", "SKLUSDT", "CTKUSDT", "ALPHAUSDT", "LINAUSDT", "UNFIUSDT", "BELUSDT", "WINGUSDT", "SUNUSDT", "JSTUSDT",
-    "BTTUSDT", "WINUSDT", "NFTUSDT", "QUICKUSDT", "PERPUSDT", "CFXUSDT", "STPTUSDT", "SRKUSDT", "MDTUSDT", "OGUSDT",
-    
-    # أشهر أزواج الفوركس العالمية (50 زوجاً مدعوماً كرموز تداول)
-    "EURUSDUSDT", "GBPUSDUSDT", "USDJPYUSDT", "AUDUSDUSDT", "USDCADUSDT", "USDCHFUSDT", "NZDUSDUSDT", "EURJPYUSDT", "GBPJPYUSDT", "EURGBPUSDT",
-    "AUDJPYUSDT", "EURAUDUSDT", "EURNZDUSDT", "GBPAUDUSDT", "GBPCADUSDT", "GBPNZDUSDT", "AUDCADUSDT", "AUDNZDUSDT", "CADJPYUSDT", "CHFJPYUSDT",
-    "NZDJPYUSDT", "EUREURUSDT", "USDMXNUSDT", "USDZARUSDT", "USDTRYUSDT", "USDBRLUSDT", "USDSGDUSDT", "USDHKDUSDT", "USDNOKUSDT", "USDSEKUSDT",
-    "AUDCHFUSDT", "CADCHFUSDT", "EURAUDUSDT", "EURCADUSDT", "EURCHFUSDT", "EURNZDUSDT", "GBPCADUSDT", "GBPAUDUSDT", "GBPNZDUSDT", "NZDCADUSDT",
-    "NZDCHFUSDT", "NZDUSDUSDT", "AUDUSDUSDT", "USDDKKUSDT", "USDCADUSDT", "EURHUFUSDT", "EURPLNUSDT", "EURCZKUSDT", "USDPLNUSDT", "USDCADUSDT"
-]
+def fetch_all_usdt_symbols():
+    """جلب جميع أزواج العملات وأزواج الفوركس المرتبطة بـ USDT من بينانس تلقائياً"""
+    url = "https://api.binance.com/api/v3/exchangeInfo"
+    try:
+        response = requests.get(url, timeout=10)
+        data = response.json()
+        symbols = []
+        for s in data.get('symbols', []):
+            if s['status'] == 'TRADING' and s['quoteAsset'] == 'USDT':
+                symbol_name = s['symbol']
+                # استبعاد العملات المستقرة المكررة أو غير المفيدة للتداول التجاري البحت
+                if not any(stable in symbol_name for stable in ['USDCUSDT', 'FDUSDUSDT', 'TUSDUSDT', 'USDPUSDT']):
+                    symbols.append(symbol_name)
+        print(f"✅ تم بنجاح جلب {len(symbols)} زوجاً للتداول من بينانس تلقائياً.")
+        return symbols
+    except Exception as e:
+        print(f"❌ خطأ في جلب الأزواج تلقائياً، سيتم استخدام القائمة الاحتياطية: {e}")
+        # قائمة احتياطية في حال انقطاع الاتصال المؤقت بـ API بينانس
+        return ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT"]
+
+# جلب جميع العملات المتاحة ديناميكياً
+SYMBOLS = fetch_all_usdt_symbols()
 
 TIMEFRAME = "1h"
-MAX_OPEN_TRADES = 25
+MAX_OPEN_TRADES = 40  # زيادة الحد الأقصى للصفقات المفتوحة لتناسب العدد الهائل من العملات
 
 active_trades = {}
 last_signals = {symbol: None for symbol in SYMBOLS}
@@ -204,11 +205,12 @@ def analyze_symbol(symbol):
         active_trades[symbol] = {"type": signal_type, "tp": tp, "sl": sl}
 
 def run_bot():
-    print("🚀 بدأ تشغيل البوت في الخلفية لـ 150 زوجاً...")
-    send_telegram_alert("🤖 *تم تشغيل بوت التداول بنجاح لـ 150 زوجاً (عملات رقمية وفوركس) مع استراتيجية المتوسط 200 والماكدي!*")
+    print(f"🚀 بدأ تشغيل البوت في الخلفية لمراقبة جميع أزواج بينانس ({len(SYMBOLS)} زوجاً)...")
+    send_telegram_alert(f"🤖 *تم تشغيل بوت التداول بنجاح لمراقبة جميع عملات وأزواج بينانس (${len(SYMBOLS)} زوجاً)* باستخدام المتوسط 200 والماكدي!")
     while True:
         check_and_close_trades()
-        with ThreadPoolExecutor(max_workers=10) as executor:
+        # زيادة عدد الـ workers لتسريع الفحص نظراً لزيادة عدد العملات
+        with ThreadPoolExecutor(max_workers=20) as executor:
             executor.map(analyze_symbol, SYMBOLS)
         time.sleep(180)
 
