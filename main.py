@@ -204,7 +204,6 @@ def analyze_symbol(symbol):
 
 def run_bot():
     print(f"🚀 بدأ تشغيل البوت في الخلفية لمراقبة جميع أزواج بينانس ({len(SYMBOLS)} زوجاً)...")
-    # تم إزالة علامة الدولار بشكل نهائي من هنا لتظهر القيمة الحقيقية الصحيحة
     send_telegram_alert(f"🤖 *تم تشغيل بوت التداول بنجاح لمراقبة جميع عملات وأزواج بينانس ({len(SYMBOLS)} زوجاً)* باستخدام المتوسط 200 والماكدي!")
     while True:
         check_and_close_trades()
@@ -227,7 +226,6 @@ if __name__ == "__main__":
     bot_thread.daemon = True
     bot_thread.start()
 
-    port = int(os.environ.com("PORT", 10000) if hasattr(os, 'environ') else 10000)
     port = int(os.environ.get("PORT", 10000))
     server = HTTPServer(("0.0.0.0", port), SimpleHandler)
     server.serve_forever()
