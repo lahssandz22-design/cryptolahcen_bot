@@ -34,9 +34,9 @@ server_thread.daemon = True
 server_thread.start()
 
 # ==========================================
-# 1. إعدادات التلجرام للبوت الجديد @lahscenxd_bot وبيناس
+# 1. إعدادات التلجرام لبوت lahscenxd_bot وبينانس
 # ==========================================
-TELEGRAM_BOT_TOKEN = "8617483405:AAGhNHH1A3X1twjDUU5fwdwr6rUYKMhc9gc"[cite: 4]
+TELEGRAM_BOT_TOKEN = "8617483405:AAGhNHH1a3X1twjDUU5fwdwr6rUYKMhc9gc"
 TELEGRAM_CHAT_ID = "7895743860"
 
 SYMBOLS = [
@@ -67,7 +67,7 @@ SYMBOLS = [
     "SXPUSDT", "CHRUSDT", "HBARUSDT", "ENJUSDT", "BATUSDT",
     "ZRXUSDT", "KNCUSDT", "IOSTUSDT", "ONTUSDT", "ZILUSDT",
     "VETUSDT", "THETAUSDT", "XTZUSDT", "EOSUSDT", "BCHUSDT",
-    "ETCUSDT", "XLMUSDT", "DASHUSDT", "ZECUSDT", "KSMUSDT",
+    "XLMUSDT", "DASHUSDT", "ZECUSDT", "KSMUSDT",
     "STORJUSDT", "LRCUSDT", "ANKRUSDT", "SCUSDT", "ZENUSDT",
     "RVNUSDT", "COTIUSDT", "BLZUSDT", "HIFIUSDT", "CYBERUSDT",
     "ARKMUSDT", "MEMEUSDT", "VANRYUSDT", "AEVOUSDT", "ETHFIUSDT",
@@ -291,7 +291,7 @@ def analyze_symbol(symbol):
 # 3. تشغيل الفحص المتوازي
 # ==========================================
 def run_bot():
-    print(f"✅ تم تشغيل البوت الجديد @lahscenxd_bot بحد أقصى {MAX_OPEN_TRADES} صفقة على فريم [{TIMEFRAME}] لمراقبة {len(SYMBOLS)} عملة...")
+    print(f"✅ تم تشغيل البوت @lahscenxd_bot بحد أقصى {MAX_OPEN_TRADES} صفقة على فريم [{TIMEFRAME}] لمراقبة {len(SYMBOLS)} عملة...")
     send_telegram_alert(f"🤖 *تم تحديث وتشغيل بوت الماكدي الجديد (@lahscenxd_bot)*\n• مراقبة `{len(SYMBOLS)}` عملة رقمية 🚀\n• وضع الحماية مفعّل 🔒")
 
     while True:
