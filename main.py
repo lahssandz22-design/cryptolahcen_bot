@@ -2,16 +2,12 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 import os
 import threading
 import time
-import io
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 import pandas as pd
 import requests
 import ta
 
 # ==========================================
-# إعدادات بوت التلجرام وبينانس (بالتوكن الجديد)
+# 1. إعدادات بوت التلجرام وبينانس
 # ==========================================
 TELEGRAM_BOT_TOKEN = "8617483405:AAGhNHH1A3X1twjDUU5fwdWr6rUYKMhc9gc"
 TELEGRAM_CHAT_ID = "7895743860"
@@ -27,16 +23,15 @@ def fetch_top_usdt_symbols():
                 symbol_name = s['symbol']
                 if not any(stable in symbol_name for stable in ['USDC', 'FDUSD', 'TUSD', 'USDP', 'BUSD']):
                     symbols.append(symbol_name)
-        return symbols[:100] # ضبط العدد على 100 لضمان استقرار التشغيل على الهاتف
+        return symbols[:50] # تقليص العدد لضمان السرعة القصوى
     except Exception:
         return ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT"]
 
 SYMBOLS = fetch_top_usdt_symbols()
 TIMEFRAME = "1h"
 
+# قاموس لتسجيل وقت آخر إشارة لكل عملة لمنع التكرار
 last_signal_times = {}
-active_trades = []      
-closed_trades_history = [] 
 
 def send_telegram_alert(message):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
@@ -50,16 +45,7 @@ def send_telegram_alert(message):
     except Exception as e:
         print(f"خطأ في التيليجرام: {e}")
 
-def send_telegram_photo(photo_bytes, caption):
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
-    files = {'photo': ('stats.png', photo_bytes, 'image/png')}
-    data = {'chat_id': TELEGRAM_CHAT_ID, 'caption': caption, 'parse_mode': 'Markdown'}
-    try:
-        requests.post(url, data=data, files=files, timeout=15)
-    except Exception as e:
-        print(f"خطأ في إرسال الصورة: {e}")
-
-def get_binance_klines(symbol, interval, limit=250):
+def get_binance_klines(symbol, interval, limit=100):
     url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval={interval}&limit={limit}"
     try:
         response = requests.get(url, timeout=5)
@@ -72,163 +58,81 @@ def get_binance_klines(symbol, interval, limit=250):
         ])
         df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
         df['close'] = df['close'].astype(float)
-        df['high'] = df['high'].astype(float)
-        df['low'] = df['low'].astype(float)
         return df
     except Exception:
         return None
 
-def generate_stats_image():
-    if not closed_trades_history:
-        return None
-    
-    recent = closed_trades_history[-20:]
-    wins = sum(1 for t in recent if t['result'] == 'WIN')
-    losses = sum(1 for t in recent if t['result'] == 'LOSS')
-    total = len(recent)
-    win_rate = (wins / total) * 100 if total > 0 else 0
+def analyze_market():
+    print("🔍 جاري فحص السوق والبحث عن إشارات جديدة...")
+    for symbol in SYMBOLS:
+        try:
+            df = get_binance_klines(symbol, TIMEFRAME, limit=100)
+            if df is None or len(df) < 30:
+                continue
+                
+            curr_price = df['close'].iloc[-2]
+            current_candle_time = df['timestamp'].iloc[-2]
 
-    fig, ax = plt.subplots(figsize=(5, 5))
-    ax.pie([wins, losses], labels=[f'ربح ({wins})', f'خسارة ({losses})'], 
-           colors=['#2ecc71', '#e74c3c'], autopct='%1.1f%%', startangle=140, 
-           textprops={'color': 'white', 'weight': 'bold'})
-    ax.set_facecolor('#1e1e1e')
-    fig.patch.set_facecolor('#1e1e1e')
-    plt.title(f"إحصائيات آخر {total} صفقة (Win Rate: {win_rate:.1f}%)", color='white', weight='bold', fontsize=12)
-    
-    buf = io.BytesIO()
-    plt.savefig(buf, format='png', bbox_inches='tight', facecolor=fig.get_facecolor(), edgecolor='none')
-    buf.seek(0)
-    plt.close(fig)
-    return buf.getvalue()
+            # حساب مؤشر الماكد
+            macd_object = ta.trend.MACD(close=df["close"], window_slow=26, window_fast=12, window_sign=9)
+            df["macd"] = macd_object.macd()
+            df["signal"] = macd_object.macd_signal()
 
-def monitor_and_analyze_market():
-    print(f"🚀 بدء فحص السوق لـ {len(SYMBOLS)} عملة على فريم {TIMEFRAME}...")
+            prev_macd = df["macd"].iloc[-3]
+            prev_signal = df["signal"].iloc[-3]
+            curr_macd = df["macd"].iloc[-2]
+            curr_signal = df["signal"].iloc[-2]
+
+            signal_type = None
+            if prev_macd <= prev_signal and curr_macd > curr_signal:
+                signal_type = "BUY"
+            elif prev_macd >= prev_signal and curr_macd < curr_signal:
+                signal_type = "SELL"
+
+            # إذا وجدت إشارة جديدة لشمعة جديدة، أرسلها فوراً
+            if signal_type and last_signal_times.get(symbol) != current_candle_time:
+                last_signal_times[symbol] = current_candle_time
+                
+                distance = curr_price * 0.015
+                if signal_type == "BUY":
+                    sl = curr_price - distance
+                    tp = curr_price + (distance * 2)
+                else:
+                    sl = curr_price + distance
+                    tp = curr_price - (distance * 2)
+
+                msg = f"🚨 *إشارة دخول جديدة ({signal_type})*\n🪙 العملة: `{symbol}`\n⏱ الفريم: `{TIMEFRAME}`\n💰 سعر الدخول: `{curr_price}`\n🎯 الهدف (TP): `{tp:.4f}`\n🛑 وقف الخسارة (SL): `{sl:.4f}`\n⚖️ نسبة المخاطر والعائد: 1:2"
+                send_telegram_alert(msg)
+                print(f"✨ تم إرسال إشارة للعملة: {symbol} [{signal_type}]")
+        except Exception as e:
+            print(f"خطأ في تحليل العملة {symbol}: {e}")
+
+def run_bot():
+    print(f"🚀 بدأ تشغيل بوت الماكد بنجاح، مراقبة {len(SYMBOLS)} عملة...")
+    try:
+        send_telegram_alert("🤖 *تم تشغيل بوت التداول بنجاح وبدون توقف!*")
+    except:
+        pass
+    
     while True:
         try:
-            global active_trades
-            for trade in active_trades[:]:
-                df_check = get_binance_klines(trade['symbol'], TIMEFRAME, limit=5)
-                if df_check is not None and not df_check.empty:
-                    current_price = df_check['close'].iloc[-1]
-                    high_price = df_check['high'].iloc[-1]
-                    low_price = df_check['low'].iloc[-1]
-                    
-                    if trade['type'] == 'BUY':
-                        if high_price >= trade['tp']:
-                            trade['result'] = 'WIN'
-                            closed_trades_history.append(trade)
-                            active_trades.remove(trade)
-                            send_telegram_alert(f"🟢 *تم تحقيق الهدف بربح! (TP)*\n🪙 العملة: `{trade['symbol']}`\n💰 سعر الخروج: `{trade['tp']}`")
-                            check_and_send_stats()
-                        elif low_price <= trade['sl']:
-                            trade['result'] = 'LOSS'
-                            closed_trades_history.append(trade)
-                            active_trades.remove(trade)
-                            send_telegram_alert(f"🔴 *ضرب وقف الخسارة (SL)*\n🪙 العملة: `{trade['symbol']}`\n📉 سعر الخروج: `{trade['sl']}`")
-                            check_and_send_stats()
-                    elif trade['type'] == 'SELL':
-                        if low_price <= trade['tp']:
-                            trade['result'] = 'WIN'
-                            closed_trades_history.append(trade)
-                            active_trades.remove(trade)
-                            send_telegram_alert(f"🟢 *تم تحقيق الهدف بربح! (TP)*\n🪙 العملة: `{trade['symbol']}`\n💰 سعر الخروج: `{trade['tp']}`")
-                            check_and_send_stats()
-                        elif high_price >= trade['sl']:
-                            trade['result'] = 'LOSS'
-                            closed_trades_history.append(trade)
-                            active_trades.remove(trade)
-                            send_telegram_alert(f"🔴 *ضرب وقف الخسارة (SL)*\n🪙 العملة: `{trade['symbol']}`\n📈 سعر الخروج: `{trade['sl']}`")
-                            check_and_send_stats()
-
-            for symbol in SYMBOLS:
-                df = get_binance_klines(symbol, TIMEFRAME, limit=220)
-                if df is None or len(df) < 205:
-                    continue
-                
-                df['ema200'] = ta.trend.ema_indicator(df['close'], window=200)
-                macd_object = ta.trend.MACD(close=df["close"], window_slow=26, window_fast=12, window_sign=9)
-                df["macd"] = macd_object.macd()
-                df["signal"] = macd_object.macd_signal()
-
-                curr_price = df['close'].iloc[-2]
-                curr_ema200 = df['ema200'].iloc[-2]
-                current_candle_time = df['timestamp'].iloc[-2]
-
-                prev_macd = df["macd"].iloc[-3]
-                prev_signal = df["signal"].iloc[-3]
-                curr_macd = df["macd"].iloc[-2]
-                curr_signal = df["signal"].iloc[-2]
-
-                signal_type = None
-
-                if curr_price > curr_ema200:
-                    if prev_macd <= prev_signal and curr_macd > curr_signal and curr_macd < 0:
-                        signal_type = "BUY"
-                elif curr_price < curr_ema200:
-                    if prev_macd >= prev_signal and curr_macd < curr_signal and curr_macd > 0:
-                        signal_type = "SELL"
-
-                if signal_type and last_signal_times.get(symbol) != current_candle_time:
-                    last_signal_times[symbol] = current_candle_time
-                    
-                    distance = curr_price * 0.015
-                    if signal_type == "BUY":
-                        sl = curr_price - distance
-                        tp = curr_price + (distance * 2)
-                    else:
-                        sl = curr_price + distance
-                        tp = curr_price - (distance * 2)
-
-                    msg = (
-                        f"🚨 *إشارة دخول جديدة ({signal_type})*\n"
-                        f"🪙 العملة: `{symbol}`\n"
-                        f"⏱ الفريم: `{TIMEFRAME}`\n"
-                        f"📊 الاتجاه (فلتر EMA 200): مع الاتجاه\n"
-                        f"💰 سعر الدخول: `{curr_price}`\n"
-                        f"🎯 الهدف (TP): `{tp:.4f}`\n"
-                        f"🛑 وقف الخسارة (SL): `{sl:.4f}`\n"
-                        f"⚖️ نسبة المخاطر والعائد: 1:2"
-                    )
-                    send_telegram_alert(msg)
-                    
-                    active_trades.append({
-                        'symbol': symbol,
-                        'type': signal_type,
-                        'entry': curr_price,
-                        'tp': tp,
-                        'sl': sl
-                    })
-                
-                time.sleep(0.3)
-
+            analyze_market()
         except Exception as e:
-            print(f"خطأ في حلقة التحليل: {e}")
+            print(f"خطأ عام: {e}")
         
-        time.sleep(60)
-
-def check_and_send_stats():
-    if len(closed_trades_history) % 5 == 0:
-        img_bytes = generate_stats_image()
-        if img_bytes:
-            recent = closed_trades_history[-20:]
-            wins = sum(1 for t in recent if t['result'] == 'WIN')
-            losses = sum(1 for t in recent if t['result'] == 'LOSS')
-            caption = f"📊 *تقرير أداء آخر {len(recent)} صفقات منفذة*\n✅ صفقات رابحة: `{wins}`\n❌ صفقات خاسرة: `{losses}`"
-            send_telegram_photo(img_bytes, caption)
+        print("💤 انتظار الدورة القادمة...")
+        time.sleep(120) # فحص السوق كل دقيقتين
 
 class SimpleHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
-        self.wfile.write(b"Trading Bot with EMA200 & MACD is running successfully!")
+        self.wfile.write(b"Bot is running!")
     def log_message(self, format, *args):
         return
 
 if __name__ == "__main__":
-    send_telegram_alert("🤖 *تم تشغيل بوت التداول المطور بنجاح (EMA 200 + MACD)*\n📈 يتم مراقبة العملات رقمية بنجاح.")
-
-    bot_thread = threading.Thread(target=monitor_and_analyze_market)
+    bot_thread = threading.Thread(target=run_bot)
     bot_thread.daemon = True
     bot_thread.start()
 
