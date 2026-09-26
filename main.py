@@ -23,8 +23,11 @@ def fetch_top_usdt_symbols():
                 symbol_name = s['symbol']
                 if not any(stable in symbol_name for stable in ['USDC', 'FDUSD', 'TUSD', 'USDP', 'BUSD']):
                     symbols.append(symbol_name)
-        return symbols[:50] # تقليص العدد لضمان السرعة القصوى
-    except Exception:
+        result = symbols[:50]
+        print(f"✅ تم بنجاح جلب {len(result)} عملة من بينانس.")
+        return result
+    except Exception as e:
+        print(f"❌ فشل جلب العملات من بينانس بسبب الخطأ: {e}، سيتم استخدام القائمة الاحتياطية.")
         return ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT"]
 
 SYMBOLS = fetch_top_usdt_symbols()
@@ -59,15 +62,17 @@ def get_binance_klines(symbol, interval, limit=100):
         df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
         df['close'] = df['close'].astype(float)
         return df
-    except Exception:
+    except Exception as e:
+        print(f"❌ خطأ جلب شموع العملة {symbol}: {e}")
         return None
 
 def analyze_market():
-    print("🔍 جاري فحص السوق والبحث عن إشارات جديدة...")
+    print(f"🔍 جاري فحص السوق لـ {len(SYMBOLS)} عملة والبحث عن إشارات جديدة...")
     for symbol in SYMBOLS:
         try:
             df = get_binance_klines(symbol, TIMEFRAME, limit=100)
             if df is None or len(df) < 30:
+                print(f"⚠️ تخطي العملة {symbol} لعدم توفر بيانات كافية.")
                 continue
                 
             curr_price = df['close'].iloc[-2]
