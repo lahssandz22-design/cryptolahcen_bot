@@ -20,37 +20,26 @@ def send_telegram_alert(message):
         "parse_mode": "Markdown"
     }
     try:
-        requests.post(url, data=payload, timeout=10)
+        requests.post(url, data=payload, timeout=5)
     except Exception as e:
         print(f"خطأ في التيليجرام: {e}")
-
-def get_symbols():
-    print("⏳ جاري محاولة الاتصال بمنصة بينانس لجلب العملات...")
-    url = "https://api.binance.com/api/v3/exchangeInfo"
-    try:
-        response = requests.get(url, timeout=15)
-        data = response.json()
-        symbols = []
-        for s in data.get('symbols', []):
-            if s['status'] == 'TRADING' and s['quoteAsset'] == 'USDT':
-                symbol_name = s['symbol']
-                if not any(stable in symbol_name for stable in ['USDC', 'FDUSD', 'TUSD', 'USDP', 'BUSD']):
-                    symbols.append(symbol_name)
-        result = symbols[:50]
-        print(f"✅ نجاح تام: تم جلب {len(result)} عملة من بينانس.")
-        return result
-    except Exception as e:
-        print(f"⚠️ فشل جلب العملات من بينانس، السبب: {e}")
-        print("🔄 سيتم استخدام قائمة العملات الاحتياطية الثابتة.")
-        return ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT"]
 
 TIMEFRAME = "1h"
 last_signal_times = {}
 
+# قائمة عملات احتياطية صلبة ومضمونة لتجنب أي تعليق في جلب الـ API الخارجي
+BACKUP_SYMBOLS = [
+    "BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", 
+    "ADAUSDT", "DOGEUSDT", "AVAXUSDT", "LINKUSDT", "NEARUSDT"
+]
+
 def get_binance_klines(symbol, interval, limit=100):
     url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval={interval}&limit={limit}"
     try:
-        response = requests.get(url, timeout=10)
+        # استخدام timeout قصير جداً لمنع تعليق البوت نهائياً
+        response = requests.get(url, timeout=5)
+        if response.status_code != 200:
+            return None
         data = response.json()
         if not isinstance(data, list):
             return None
@@ -61,24 +50,19 @@ def get_binance_klines(symbol, interval, limit=100):
         df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
         df['close'] = df['close'].astype(float)
         return df
-    except Exception as e:
-        print(f"❌ خطأ في جلب شموع {symbol}: {e}")
+    except Exception:
         return None
 
 def run_bot():
-    print("🚀 بدء تنفيذ دالة run_bot() بنجاح...")
+    print("🚀 تم بدء تنفيذ دالة التداول بنجاح.")
     try:
-        send_telegram_alert("🤖 *تم تشغيل بوت التداول بنجاح وبدون توقف!*")
-    except Exception as e:
-        print(f"خطأ إرسال رسالة البداية: {e}")
-
-    # جلب العملات داخل الخيط لضمان عدم تجمد البداية
-    SYMBOLS = get_symbols()
-    print(f"📊 عدد العملات التي سيتم مراقبتها: {len(SYMBOLS)}")
+        send_telegram_alert("🤖 *تم تشغيل البوت بنجاح وبدأ مراقبة السوق!*")
+    except Exception:
+        pass
 
     while True:
-        print(f"🔍 [دورة جديدة] جاري فحص السوق لـ {len(SYMBOLS)} عملة...")
-        for symbol in SYMBOLS:
+        print("🔄 [دورة جديدة] بدء فحص العملات...")
+        for symbol in BACKUP_SYMBOLS:
             try:
                 df = get_binance_klines(symbol, TIMEFRAME, limit=100)
                 if df is None or len(df) < 30:
@@ -120,8 +104,7 @@ def run_bot():
             except Exception as e:
                 print(f"خطأ في تحليل العملة {symbol}: {e}")
             
-            # توقف قصير جداً بين كل عملة لمنع ضغط الطلبات
-            time.sleep(0.5)
+            time.sleep(1)
 
         print("💤 انتهت الدورة الحالية، انتظار دقيقتين للدورة القادمة...")
         time.sleep(120)
